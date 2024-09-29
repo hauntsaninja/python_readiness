@@ -399,7 +399,7 @@ def sysconfig_purelib() -> Path:
 # ==============================
 
 
-async def main() -> None:
+async def async_main() -> None:
     assert sys.version_info >= (3, 9)
 
     parser = argparse.ArgumentParser()
@@ -478,5 +478,9 @@ async def main() -> None:
     await session.close()
 
 
+def main() -> None:
+    asyncio.run(async_main())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
