@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import collections
+import email.message
 import email.parser
 import email.policy
 import enum
@@ -35,7 +36,6 @@ import packaging.version
 from packaging.requirements import Requirement
 from packaging.specifiers import Specifier
 from packaging.version import Version
-
 
 # ==============================
 # aiohttp caching
@@ -101,6 +101,14 @@ async def latest_python_release(session: CachedSession) -> tuple[int, int]:
     assert len(latest) == 2
     return latest
 
+
+def previous_minor_python_version(python_version: tuple[int, int]) -> tuple[int, int]:
+    major, minor = python_version
+    if minor == 0:
+        raise ValueError("No previous minor version")
+    return major, minor - 1
+
+
 # ==============================
 # tag munging
 # ==============================
@@ -147,12 +155,37 @@ class PythonSupport(enum.IntEnum):
     has_classifier_and_explicit_wheel = 5
 
 
-async def support_from_wheels(
-    session: CachedSession, wheels: list[dict[str, Any]], python_version: tuple[int, int]
-) -> PythonSupport:
-    if not wheels:
-        return PythonSupport.totally_unknown
+async def metadata_from_wheel(
+    session: CachedSession, wheel: dict[str, Any]
+) -> email.message.Message:
+    if wheel.get("core-metadata"):
+        url = wheel["url"] + ".metadata"
+        resp = await session.get(url)
+        resp.raise_for_status()
+        content = io.BytesIO(resp.body)
+        parser = email.parser.BytesParser(policy=email.policy.compat32)
+        metadata = parser.parse(content)
+        return metadata
 
+    url = wheel["url"]
+    resp = await session.get(url)
+    resp.raise_for_status()
+    body = io.BytesIO(resp.body)
+    with zipfile.ZipFile(body) as zf:
+        metadata_file = next(
+            n
+            for n in zf.namelist()
+            if Path(n).name == "METADATA" and Path(n).parent.suffix == ".dist-info"
+        )
+        with zf.open(metadata_file) as f:
+            parser = email.parser.BytesParser(policy=email.policy.compat32)
+            metadata = parser.parse(f)
+    return metadata
+
+
+def _support_from_wheel_tags(
+    wheels: list[dict[str, Any]], python_version: tuple[int, int]
+) -> tuple[dict[str, Any] | None, PythonSupport]:
     support = PythonSupport.unsupported
     best_wheel = None
 
@@ -172,36 +205,38 @@ async def support_from_wheels(
                         best_wheel = file
 
     assert support <= PythonSupport.has_explicit_wheel
+    return best_wheel, support
+
+
+async def support_from_wheels(
+    session: CachedSession, wheels: list[dict[str, Any]], python_version: tuple[int, int]
+) -> PythonSupport:
+    if not wheels:
+        return PythonSupport.totally_unknown
+
+    best_wheel, support = _support_from_wheel_tags(wheels, python_version)
+    assert support <= PythonSupport.has_explicit_wheel
     if support == PythonSupport.unsupported:
         # We have no wheels that work for this version (and there are other wheels)
         # (don't bother to check if there is a classifier if we'd have to build sdist for support)
         return support
+
     assert support >= PythonSupport.has_viable_wheel
+    if support == PythonSupport.has_viable_wheel:
+        # If we have a viable wheel, check if we have an explicit wheel for the previous Python
+        # minor version. If we do, we're only supported if we have a classifier.
+        # This results in better behaviour for cases like mypyc-compiled wheels, where yes, there
+        # is a pure Python wheel, but upstream probably hasn't tested on the new Python and also
+        # you're probably running much slower without the compiled extension.
+        _, prev_support = _support_from_wheel_tags(
+            wheels, previous_minor_python_version(python_version)
+        )
+        if prev_support == PythonSupport.has_explicit_wheel:
+            support = PythonSupport.unsupported
 
     # We have wheels that are at least viable for this version — time to check the classifiers!
     assert best_wheel is not None
-
-    if best_wheel.get("core-metadata"):
-        url = best_wheel["url"] + ".metadata"
-        resp = await session.get(url)
-        resp.raise_for_status()
-        content = io.BytesIO(resp.body)
-        parser = email.parser.BytesParser(policy=email.policy.compat32)
-        metadata = parser.parse(content)
-    else:
-        url = best_wheel["url"]
-        resp = await session.get(url)
-        resp.raise_for_status()
-        body = io.BytesIO(resp.body)
-        with zipfile.ZipFile(body) as zf:
-            metadata_file = next(
-                n
-                for n in zf.namelist()
-                if Path(n).name == "METADATA" and Path(n).parent.suffix == ".dist-info"
-            )
-            with zf.open(metadata_file) as f:
-                parser = email.parser.BytesParser(policy=email.policy.compat32)
-                metadata = parser.parse(f)
+    metadata = await metadata_from_wheel(session, best_wheel)
 
     classifiers = set(metadata.get_all("Classifier", []))
     python_version_str = ".".join(str(v) for v in python_version)
@@ -213,6 +248,10 @@ async def support_from_wheels(
         if support == PythonSupport.has_explicit_wheel:
             return PythonSupport.has_classifier_and_explicit_wheel
         elif support == PythonSupport.has_viable_wheel:
+            return PythonSupport.has_classifier
+        elif support == PythonSupport.unsupported:
+            # charset_normalizer has a release where they only have pure Python wheels for 3.12
+            # but they do have the classifier. This is debatable, but just trust the upstream
             return PythonSupport.has_classifier
         else:
             raise AssertionError
