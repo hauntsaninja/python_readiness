@@ -7,12 +7,16 @@ import email.parser
 import email.policy
 import enum
 import functools
+import hashlib
 import importlib.metadata
 import io
+import json
 import pathlib
 import re
 import sys
 import sysconfig
+import tempfile
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -24,6 +28,51 @@ import packaging.version
 from packaging.requirements import Requirement
 from packaging.specifiers import Specifier
 from packaging.version import Version
+
+
+def _cache_key(url: str, **kwargs) -> str:
+    key = json.dumps((url, kwargs), sort_keys=True)
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+class CachedResponse:
+    def __init__(self, body: bytes, status: int) -> None:
+        self.body = body
+        self.status = status
+
+    def raise_for_status(self) -> None:
+        if self.status >= 400:
+            raise RuntimeError(f"HTTP status {self.status}")
+
+    def json(self) -> Any:
+        return json.loads(self.body)
+
+class CachedSession:
+    def __init__(self) -> None:
+        self.session = aiohttp.ClientSession()
+        self.cache_dir = Path(tempfile.gettempdir()) / "python_readiness_cache"
+
+    async def get(self, url: str, **kwargs) -> CachedResponse:
+        cache_file = self.cache_dir / _cache_key(url, **kwargs)
+        if cache_file.is_dir():
+            fetch_time = json.loads((cache_file / "fetch").read_text())
+            if fetch_time > time.time() - 900:
+                return CachedResponse(
+                    body=(cache_file / "body").read_bytes(),
+                    status=int((cache_file / "status").read_text()),
+                )
+
+        async with self.session.get(url, **kwargs) as resp:
+            ret = CachedResponse(body=await resp.read(), status=resp.status)
+
+        cache_file.mkdir(parents=True, exist_ok=True)
+        (cache_file / "fetch").write_text(json.dumps(time.time()))
+        (cache_file / "body").write_bytes(ret.body)
+        (cache_file / "status").write_text(str(ret.status))
+        return ret
+
+    async def close(self) -> None:
+        await self.session.close()
 
 
 class PythonSupport(enum.IntEnum):
@@ -61,7 +110,7 @@ def tag_works_for_python(tag: packaging.tags.Tag, python_version: tuple[int, int
 
 
 async def support_from_wheels(
-    session: aiohttp.ClientSession, wheels: list[dict[str, Any]], python_version: tuple[int, int]
+    session: CachedSession, wheels: list[dict[str, Any]], python_version: tuple[int, int]
 ) -> PythonSupport:
     if not wheels:
         return PythonSupport.totally_unknown
@@ -96,25 +145,25 @@ async def support_from_wheels(
 
     if best_wheel.get("core-metadata"):
         url = best_wheel["url"] + ".metadata"
-        async with session.get(url) as resp:
-            resp.raise_for_status()
-            content = io.BytesIO(await resp.read())
+        resp = await session.get(url)
+        resp.raise_for_status()
+        content = io.BytesIO(resp.body)
         parser = email.parser.BytesParser(policy=email.policy.compat32)
         metadata = parser.parse(content)
     else:
         url = best_wheel["url"]
-        async with session.get(url) as resp:
-            resp.raise_for_status()
-            body = io.BytesIO(await resp.read())
-            with zipfile.ZipFile(body) as zf:
-                metadata_file = next(
-                    n
-                    for n in zf.namelist()
-                    if Path(n).name == "METADATA" and Path(n).parent.suffix == ".dist-info"
-                )
-                with zf.open(metadata_file) as f:
-                    parser = email.parser.BytesParser(policy=email.policy.compat32)
-                    metadata = parser.parse(f)
+        resp = await session.get(url)
+        resp.raise_for_status()
+        body = io.BytesIO(resp.body)
+        with zipfile.ZipFile(body) as zf:
+            metadata_file = next(
+                n
+                for n in zf.namelist()
+                if Path(n).name == "METADATA" and Path(n).parent.suffix == ".dist-info"
+            )
+            with zf.open(metadata_file) as f:
+                parser = email.parser.BytesParser(policy=email.policy.compat32)
+                metadata = parser.parse(f)
 
     classifiers = set(metadata.get_all("Classifier", []))
     python_version_str = ".".join(str(v) for v in python_version)
@@ -131,14 +180,15 @@ def safe_version(v: str) -> Version:
 
 
 async def dist_support(
-    session: aiohttp.ClientSession, name: str, python_version: tuple[int, int]
+    session: CachedSession, name: str, python_version: tuple[int, int]
 ) -> tuple[Version | None, PythonSupport]:
     headers = {"Accept": "application/vnd.pypi.simple.v1+json"}
-    async with session.get(f"https://pypi.org/simple/{name}/", headers=headers) as resp:
-        if resp.status == 404:
-            return None, PythonSupport.totally_unknown
-        resp.raise_for_status()
-        data = await resp.json()
+
+    resp = await session.get(f"https://pypi.org/simple/{name}/", headers=headers)
+    if resp.status == 404:
+        return None, PythonSupport.totally_unknown
+    resp.raise_for_status()
+    data = resp.json()
 
     version_wheels = collections.defaultdict[Version, list[dict[str, Any]]](list)
 
@@ -285,37 +335,40 @@ async def main() -> None:
 
     previous = deduplicate_reqs(previous)
 
-    async with aiohttp.ClientSession() as session:
-        supports: list[tuple[Version | None, PythonSupport]] = await asyncio.gather(
-            *(dist_support(session, p.name, python_version) for p in previous)
-        )
-        package_support = dict(zip(previous, supports, strict=True))
-        for previous_req, (version, support) in sorted(
-            package_support.items(), key=lambda x: (-x[1][1].value, x[0].name)
-        ):
-            assert (version is None) == (support <= PythonSupport.has_viable_wheel)
+    session = CachedSession()
 
-            package = previous_req.name
-            if version is None:
-                new_req = Requirement(package)
-            else:
-                new_req = Requirement(f"{package}>={version}")
+    supports: list[tuple[Version | None, PythonSupport]] = await asyncio.gather(
+        *(dist_support(session, p.name, python_version) for p in previous)
+    )
+    package_support = dict(zip(previous, supports, strict=True))
+    for previous_req, (version, support) in sorted(
+        package_support.items(), key=lambda x: (-x[1][1].value, x[0].name)
+    ):
+        assert (version is None) == (support <= PythonSupport.has_viable_wheel)
 
-            PAD = 30
-            previous_req_min = approx_min_satisfying_version(previous_req)
-            if previous_req_min in new_req.specifier:
-                if support > PythonSupport.has_viable_wheel:
-                    print(
-                        f"{str(previous_req):<{PAD}}  # {support.name} (existing requirement ensures support)"
-                    )
-                elif support >= PythonSupport.has_viable_wheel:
-                    print(f"{str(previous_req):<{PAD}}  # {support.name} (cannot ensure support)")
-                else:
-                    print(f"{str(previous_req):<{PAD}}  # {support.name}")
-            elif previous_req.specifier:
-                print(f"{str(new_req):<{PAD}}  # {support.name} (previously: {str(previous_req)})")
+        package = previous_req.name
+        if version is None:
+            new_req = Requirement(package)
+        else:
+            new_req = Requirement(f"{package}>={version}")
+
+        PAD = 30
+        previous_req_min = approx_min_satisfying_version(previous_req)
+        if previous_req_min in new_req.specifier:
+            if support > PythonSupport.has_viable_wheel:
+                print(
+                    f"{str(previous_req):<{PAD}}  # {support.name} (existing requirement ensures support)"
+                )
+            elif support >= PythonSupport.has_viable_wheel:
+                print(f"{str(previous_req):<{PAD}}  # {support.name} (cannot ensure support)")
             else:
-                print(f"{str(new_req):<{PAD}}  # {support.name}")
+                print(f"{str(previous_req):<{PAD}}  # {support.name}")
+        elif previous_req.specifier:
+            print(f"{str(new_req):<{PAD}}  # {support.name} (previously: {str(previous_req)})")
+        else:
+            print(f"{str(new_req):<{PAD}}  # {support.name}")
+
+    await session.close()
 
 
 if __name__ == "__main__":
