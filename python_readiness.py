@@ -262,12 +262,15 @@ def parse_requirements_txt(req_file: str) -> list[str]:
         except ValueError:
             return s.strip()
 
-    entries = []
     with open(req_file) as f:
-        for line in f:
-            entry = strip_comments(line)
-            if entry:
-                entries.append(entry)
+        contents = f.read().replace("\\\n", "")
+
+    entries = []
+    for line in contents.splitlines():
+        entry = strip_comments(line)
+        entry = entry.split("--")[0].strip()
+        if entry:
+            entries.append(entry)
     return entries
 
 
