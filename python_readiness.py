@@ -89,6 +89,19 @@ class CachedSession:
 
 
 # ==============================
+# latest python release
+# ==============================
+
+
+async def latest_python_release(session: CachedSession) -> tuple[int, int]:
+    resp = await session.get("https://endoflife.date/api/python.json/")
+    resp.raise_for_status()
+    data = resp.json()
+    latest = max(tuple(map(int, x["cycle"].split("."))) for x in data)
+    assert len(latest) == 2
+    return latest
+
+# ==============================
 # tag munging
 # ==============================
 
@@ -341,14 +354,20 @@ async def main() -> None:
     assert sys.version_info >= (3, 9)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--python", default="3.13")
+    parser.add_argument("--python", default=None)
     parser.add_argument("-p", "--package", action="append", default=[])
     parser.add_argument("-r", "--requirement", action="append", default=[])
     args = parser.parse_args()
 
-    python_version: tuple[int, int] = tuple(map(int, args.python.split(".")))  # type: ignore
-    if len(python_version) != 2:
-        parser.error("Python version must be a major and minor version")
+    session = CachedSession()
+
+    python_version: tuple[int, int]
+    if args.python is None:
+        python_version = await latest_python_release(session)
+    else:
+        python_version = tuple(map(int, args.python.split(".")))  # type: ignore
+        if len(python_version) != 2:
+            parser.error("Python version must be a major and minor version")
 
     for pkg in args.package:
         if re.fullmatch(r"(python)?[23]\.\d{1,2}", pkg):
@@ -375,8 +394,6 @@ async def main() -> None:
         previous = [Requirement(f"{name}>={version}") for name, version in venv_versions.items()]
 
     previous = deduplicate_reqs(previous)
-
-    session = CachedSession()
 
     supports: list[tuple[Version | None, PythonSupport]] = await asyncio.gather(
         *(dist_support(session, p.name, python_version) for p in previous)
