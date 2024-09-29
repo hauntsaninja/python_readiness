@@ -410,7 +410,7 @@ async def main() -> None:
         else:
             new_req = Requirement(f"{package}>={version}")
 
-        PAD = 30
+        PAD = 40
         previous_req_min = approx_min_satisfying_version(previous_req)
         if previous_req_min in new_req.specifier:
             if support > PythonSupport.has_viable_wheel:
