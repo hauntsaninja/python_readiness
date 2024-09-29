@@ -338,7 +338,7 @@ async def main() -> None:
     assert sys.version_info >= (3, 9)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--python", default="3.12")
+    parser.add_argument("--python", default="3.13")
     parser.add_argument("-p", "--package", action="append", default=[])
     parser.add_argument("-r", "--requirement", action="append", default=[])
     args = parser.parse_args()
