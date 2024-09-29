@@ -1,0 +1,10 @@
+[project]
+name = "python-readiness"
+version = "0.1.0"
+description = "Are your dependencies ready for new Python?"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "aiohttp>=3.10",
+    "packaging>=24",
+]
