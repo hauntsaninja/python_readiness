@@ -1,6 +1,6 @@
 [project]
-name = "python-readiness"
-version = "0.1.0"
+name = "python_readiness"
+version = "1.0"
 description = "Are your dependencies ready for new Python?"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -8,3 +8,13 @@ dependencies = [
     "aiohttp>=3.10",
     "packaging>=24",
 ]
+
+[project.scripts]
+python_readiness = "python_readiness:main"
+
+[project.urls]
+homepage = "https://github.com/hauntsaninja/python_readiness"
+
+[build-system]
+requires = ["flit_core>=3.4"]
+build-backend = "flit_core.buildapi"
