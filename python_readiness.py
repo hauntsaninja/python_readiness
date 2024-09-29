@@ -122,7 +122,7 @@ def interpreter_value(python_version: tuple[int, int]) -> str:
 
 
 @functools.cache
-def valid_interpreter_abi_set(python_version: tuple[int, int]) -> set[tuple[str, str]]:
+def _valid_interpreter_abi_set(python_version: tuple[int, int]) -> set[tuple[str, str]]:
     assert sys.implementation.name == "cpython"
     # Based on logic in packaging.tags.sys_tags
     tags = set[packaging.tags.Tag]()
@@ -138,7 +138,7 @@ def valid_interpreter_abi_set(python_version: tuple[int, int]) -> set[tuple[str,
 
 
 def tag_viable_for_python(tag: packaging.tags.Tag, python_version: tuple[int, int]) -> bool:
-    return (tag.interpreter, tag.abi) in valid_interpreter_abi_set(python_version)
+    return (tag.interpreter, tag.abi) in _valid_interpreter_abi_set(python_version)
 
 
 # ==============================
@@ -183,7 +183,7 @@ async def metadata_from_wheel(
     return metadata
 
 
-def _support_from_wheel_tags(
+def support_from_wheel_tags_helper(
     wheels: list[dict[str, Any]], python_version: tuple[int, int]
 ) -> tuple[dict[str, Any] | None, PythonSupport]:
     support = PythonSupport.unsupported
@@ -214,7 +214,7 @@ async def support_from_wheels(
     if not wheels:
         return PythonSupport.totally_unknown
 
-    best_wheel, support = _support_from_wheel_tags(wheels, python_version)
+    best_wheel, support = support_from_wheel_tags_helper(wheels, python_version)
     assert support <= PythonSupport.has_explicit_wheel
     if support == PythonSupport.unsupported:
         # We have no wheels that work for this version (and there are other wheels)
@@ -228,7 +228,7 @@ async def support_from_wheels(
         # This results in better behaviour for cases like mypyc-compiled wheels, where yes, there
         # is a pure Python wheel, but upstream probably hasn't tested on the new Python and also
         # you're probably running much slower without the compiled extension.
-        _, prev_support = _support_from_wheel_tags(
+        _, prev_support = support_from_wheel_tags_helper(
             wheels, previous_minor_python_version(python_version)
         )
         if prev_support == PythonSupport.has_explicit_wheel:
@@ -378,6 +378,8 @@ def combine_reqs(reqs: list[Requirement]) -> Requirement:
             combined.marker._markers = [combined.marker._markers, "or", req.marker._markers]
         else:
             # If one of markers is None, that is an unconditional install
+            # We might drag in a few unnecessary specifiers or markers, but that's the cost
+            # of combining requirements
             combined.marker = None
     return combined
 
