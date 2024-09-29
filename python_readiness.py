@@ -311,7 +311,11 @@ async def main() -> None:
 
     python_version: tuple[int, int] = tuple(map(int, args.python.split(".")))  # type: ignore
     if len(python_version) != 2:
-        raise ValueError("Python version must be a major and minor version")
+        parser.error("Python version must be a major and minor version")
+
+    for pkg in args.package:
+        if re.fullmatch(r"(python)?[23]\.\d{1,2}", pkg):
+            parser.error(f"Did you mean to use '--python {pkg}'? (Use -p to specify a package)")
 
     previous = [Requirement(r) for r in args.package]
 
