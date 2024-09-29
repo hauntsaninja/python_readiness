@@ -144,6 +144,7 @@ class PythonSupport(enum.IntEnum):
     has_viable_wheel = 2
     has_explicit_wheel = 3
     has_classifier = 4
+    has_classifier_and_explicit_wheel = 5
 
 
 async def support_from_wheels(
@@ -205,7 +206,16 @@ async def support_from_wheels(
     classifiers = set(metadata.get_all("Classifier", []))
     python_version_str = ".".join(str(v) for v in python_version)
     if f"Programming Language :: Python :: {python_version_str}" in classifiers:
-        return PythonSupport.has_classifier
+        # It's worth distinguishing these two cases, because it's often much more urgent to
+        # upgrade dependencies that have an explicit wheel. For pure Python packages that just
+        # bump classifiers, sure, it's great to know upstream is testing against newer Python, but
+        # old versions will usually work fine.
+        if support == PythonSupport.has_explicit_wheel:
+            return PythonSupport.has_classifier_and_explicit_wheel
+        elif support == PythonSupport.has_viable_wheel:
+            return PythonSupport.has_classifier
+        else:
+            raise AssertionError
     return support
 
 
