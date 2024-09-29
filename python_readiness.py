@@ -30,6 +30,11 @@ from packaging.specifiers import Specifier
 from packaging.version import Version
 
 
+# ==============================
+# aiohttp caching
+# ==============================
+
+
 def _cache_key(url: str, **kwargs) -> str:
     key = json.dumps((url, kwargs), sort_keys=True)
     return hashlib.sha256(key.encode()).hexdigest()
@@ -46,6 +51,7 @@ class CachedResponse:
 
     def json(self) -> Any:
         return json.loads(self.body)
+
 
 class CachedSession:
     def __init__(self) -> None:
@@ -75,12 +81,9 @@ class CachedSession:
         await self.session.close()
 
 
-class PythonSupport(enum.IntEnum):
-    unsupported = 0
-    totally_unknown = 1
-    has_viable_wheel = 2
-    has_explicit_wheel = 3
-    has_classifier = 4
+# ==============================
+# tag munging
+# ==============================
 
 
 @functools.cache
@@ -93,6 +96,7 @@ def interpreter_value(python_version: tuple[int, int]) -> str:
 @functools.cache
 def valid_interpreter_abi_set(python_version: tuple[int, int]) -> set[tuple[str, str]]:
     assert sys.implementation.name == "cpython"
+    # Based on logic in packaging.tags.sys_tags
     tags = set[packaging.tags.Tag]()
     # Note these values can be a little system dependent, but at least we mostly strip
     # platform dependence
@@ -105,8 +109,21 @@ def valid_interpreter_abi_set(python_version: tuple[int, int]) -> set[tuple[str,
     return {(t.interpreter, t.abi) for t in tags}
 
 
-def tag_works_for_python(tag: packaging.tags.Tag, python_version: tuple[int, int]) -> bool:
+def tag_viable_for_python(tag: packaging.tags.Tag, python_version: tuple[int, int]) -> bool:
     return (tag.interpreter, tag.abi) in valid_interpreter_abi_set(python_version)
+
+
+# ==============================
+# determining support
+# ==============================
+
+
+class PythonSupport(enum.IntEnum):
+    unsupported = 0
+    totally_unknown = 1
+    has_viable_wheel = 2
+    has_explicit_wheel = 3
+    has_classifier = 4
 
 
 async def support_from_wheels(
@@ -127,7 +144,7 @@ async def support_from_wheels(
                 if best_wheel is None or file.get("core-metadata"):
                     best_wheel = file
             # If we have a wheel that works for this version, we're maybe supported
-            if tag_works_for_python(tag, python_version):
+            if tag_viable_for_python(tag, python_version):
                 if support < PythonSupport.has_viable_wheel:
                     support = PythonSupport.has_viable_wheel
                     if best_wheel is None or file.get("core-metadata"):
@@ -170,13 +187,6 @@ async def support_from_wheels(
     if f"Programming Language :: Python :: {python_version_str}" in classifiers:
         return PythonSupport.has_classifier
     return support
-
-
-def safe_version(v: str) -> Version:
-    try:
-        return Version(v)
-    except packaging.version.InvalidVersion:
-        return Version("0")
 
 
 async def dist_support(
@@ -224,6 +234,18 @@ async def dist_support(
         earliest_supported_version = version
 
     return earliest_supported_version, support
+
+
+# ==============================
+# packaging utilities
+# ==============================
+
+
+def safe_version(v: str) -> Version:
+    try:
+        return Version(v)
+    except packaging.version.InvalidVersion:
+        return Version("0")
 
 
 def parse_requirements_txt(req_file: str) -> list[str]:
@@ -298,6 +320,11 @@ def deduplicate_reqs(reqs: list[Requirement]) -> list[Requirement]:
 @functools.lru_cache()
 def sysconfig_purelib() -> Path:
     return Path(sysconfig.get_paths()["purelib"])
+
+
+# ==============================
+# main
+# ==============================
 
 
 async def main() -> None:
