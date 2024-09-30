@@ -274,9 +274,9 @@ async def dist_support(
     for file in data["files"]:
         if not file["filename"].endswith(".whl"):
             continue
-        _, version, _, _ = packaging.utils.parse_wheel_filename(file["filename"])
-        if version.is_prerelease:
+        if file.get("yanked"):
             continue
+        _, version, _, _ = packaging.utils.parse_wheel_filename(file["filename"])
         version_wheels[version].append(file)
 
     all_versions = sorted((safe_version(v) for v in data["versions"]), reverse=True)
