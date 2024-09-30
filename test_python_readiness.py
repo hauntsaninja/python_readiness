@@ -189,47 +189,68 @@ def we_have_pytest_asyncio_at_home(
 async def test_python_readiness() -> None:
     session = CachedSession()
 
-    version, support = await dist_support(session, "mypy", (3, 11))
+    version, support, file_proof = await dist_support(session, "mypy", (3, 11))
     assert version == Version("0.990")
     assert support == PythonSupport.has_classifier_and_explicit_wheel
+    assert file_proof is not None
+    assert file_proof["filename"] == "mypy-0.990-cp311-cp311-win_amd64.whl"
 
-    version, support = await dist_support(session, "mypy", (3, 12))
+    version, support, file_proof = await dist_support(session, "mypy", (3, 12))
     assert version == Version("1.10.0")
     assert support == PythonSupport.has_classifier_and_explicit_wheel
+    assert file_proof is not None
+    assert file_proof["filename"] == "mypy-1.10.0-cp312-cp312-win_amd64.whl"
 
-    # this will eventually fail, but packaging.tags gets really slow for
+    # This will eventually fail, but packaging.tags gets really slow for
     # implausibly high minor versions
-    version, support = await dist_support(session, "mypy", (3, 20))
+    version, support, file_proof = await dist_support(session, "mypy", (3, 20))
     assert version is None
     assert support == PythonSupport.has_viable_wheel
+    assert file_proof is None
 
-    version, support = await dist_support(session, "mypy", (4, 0))
+    version, support, file_proof = await dist_support(session, "mypy", (4, 0))
     assert version is None
     assert support == PythonSupport.unsupported
+    assert file_proof is None
 
-    version, support = await dist_support(session, "typing-extensions", (3, 11))
+    version, support, file_proof = await dist_support(session, "typing-extensions", (3, 11))
     assert version == Version("4.5.0")
     assert support == PythonSupport.has_classifier
+    assert file_proof is not None
+    assert file_proof["filename"] == "typing_extensions-4.5.0-py3-none-any.whl"
 
-    version, support = await dist_support(session, "typing-extensions", (3, 12))
+    version, support, file_proof = await dist_support(session, "typing-extensions", (3, 12))
     assert version == Version("4.7.0")
     assert support == PythonSupport.has_classifier
+    assert file_proof is not None
+    assert file_proof["filename"] == "typing_extensions-4.7.0-py3-none-any.whl"
 
-    version, support = await dist_support(session, "typing-extensions", (3, 20))
+    version, support, file_proof = await dist_support(session, "typing-extensions", (3, 20))
     assert version is None
     assert support == PythonSupport.has_viable_wheel
+    assert file_proof is None
 
-    version, support = await dist_support(session, "typing-extensions", (4, 0))
+    version, support, file_proof = await dist_support(session, "typing-extensions", (4, 0))
     assert version is None
     assert support == PythonSupport.unsupported
+    assert file_proof is None
 
-    version, support = await dist_support(session, "charset-normalizer", (3, 12))
+    version, support, file_proof = await dist_support(session, "charset-normalizer", (3, 12))
     assert version == Version("3.3.0")
     assert support == PythonSupport.has_classifier_and_explicit_wheel
+    assert file_proof is not None
+    assert file_proof["filename"] == "charset_normalizer-3.3.0-cp312-cp312-win_amd64.whl"
 
-    version, support = await dist_support(session, "ansiconv", (3, 10))
+    version, support, file_proof = await dist_support(session, "ansiconv", (3, 10))
     assert version is None
     assert support == PythonSupport.totally_unknown
+    assert file_proof is None
+
+    version, support, file_proof = await dist_support(session, "torch", (3, 11))
+    assert version == Version("1.13.0")
+    assert support == PythonSupport.has_classifier_and_explicit_wheel
+    assert file_proof is not None
+    assert file_proof["filename"] == "torch-1.13.0-cp311-cp311-manylinux1_x86_64.whl"
 
     await session.close()
 

@@ -210,7 +210,7 @@ def support_from_wheel_tags_helper(
 
 async def support_from_files(
     session: CachedSession, files: list[dict[str, Any]], python_version: tuple[int, int]
-) -> PythonSupport:
+) -> tuple[PythonSupport, dict[str, Any] | None]:
 
     wheels = []
     for file in files:
@@ -223,7 +223,7 @@ async def support_from_files(
     if not wheels:
         # We could check if the sdist's PKG-INFO has a classifier, but anyone shipping only sdists
         # probably doesn't care enough about packaging to add classifiers.
-        return PythonSupport.totally_unknown
+        return PythonSupport.totally_unknown, None
 
     best_wheel, support = support_from_wheel_tags_helper(wheels, python_version)
     assert support <= PythonSupport.has_explicit_wheel
@@ -231,9 +231,11 @@ async def support_from_files(
         # We have no wheels that work for this version (and we know there are other wheels)
         # In theory, the sdist could declare a classifier, but that's going to suck compared
         # to a wheel and we know this package has wheels.
-        return PythonSupport.unsupported
+        return PythonSupport.unsupported, None
 
     assert support >= PythonSupport.has_viable_wheel
+
+    unsupported_without_classifier = False
     if support == PythonSupport.has_viable_wheel:
         # If we have a viable wheel, check if we have an explicit wheel for the previous Python
         # minor version. If we do, we're only supported if we have a classifier.
@@ -244,7 +246,7 @@ async def support_from_files(
             wheels, previous_minor_python_version(python_version)
         )
         if prev_support == PythonSupport.has_explicit_wheel:
-            support = PythonSupport.unsupported
+            unsupported_without_classifier = True
 
     # We have wheels that are at least viable for this version — time to check the classifiers!
     assert best_wheel is not None
@@ -258,27 +260,29 @@ async def support_from_files(
         # bump classifiers, sure, it's great to know upstream is testing against newer Python, but
         # old versions will usually work fine.
         if support == PythonSupport.has_explicit_wheel:
-            return PythonSupport.has_classifier_and_explicit_wheel
+            return PythonSupport.has_classifier_and_explicit_wheel, best_wheel
         elif support == PythonSupport.has_viable_wheel:
-            return PythonSupport.has_classifier
-        elif support == PythonSupport.unsupported:
+            # Interestingly, it's possible for unsupported_without_classifier to be True here
             # charset_normalizer has a release where they only have pure Python wheels for 3.12
-            # but they do have the classifier. This is debatable, but just trust the upstream.
+            # but they do have the classifier. We just trust the upstream.
             # If a later release ships an explicit wheel, that will mark a higher level of support.
-            return PythonSupport.has_classifier
+            return PythonSupport.has_classifier, best_wheel
         else:
             raise AssertionError
-    return support
+
+    if unsupported_without_classifier:
+        return PythonSupport.unsupported, None
+    return support, best_wheel
 
 
 async def dist_support(
     session: CachedSession, name: str, python_version: tuple[int, int]
-) -> tuple[Version | None, PythonSupport]:
+) -> tuple[Version | None, PythonSupport, dict[str, Any] | None]:
     headers = {"Accept": "application/vnd.pypi.simple.v1+json"}
 
     resp = await session.get(f"https://pypi.org/simple/{name}/", headers=headers)
     if resp.status == 404:
-        return None, PythonSupport.totally_unknown
+        return None, PythonSupport.totally_unknown, None
     resp.raise_for_status()
     data = resp.json()
 
@@ -300,25 +304,32 @@ async def dist_support(
     all_versions = sorted((safe_version(v) for v in data["versions"]), reverse=True)
     all_versions = [v for v in all_versions if not v.is_prerelease]
     if not all_versions:
-        return None, PythonSupport.totally_unknown
+        return None, PythonSupport.totally_unknown, None
     latest_version = all_versions[0]
 
-    support = await support_from_files(session, version_files[latest_version], python_version)
+    support, best_file = await support_from_files(
+        session, version_files[latest_version], python_version
+    )
     if support <= PythonSupport.has_viable_wheel:
-        return None, support
+        return None, support, None
 
     # Try to figure out which version added the classifier / explicit wheel
     # Just do a dumb linear search
+    # Note that if a package backports support for newer Python versions to an older branch of
+    # development (like sqlalchemy does), we won't necessarily find the earliest supported version
     earliest_supported_version = latest_version
     for version in all_versions:
         if version == latest_version:
             continue
-        version_support = await support_from_files(session, version_files[version], python_version)
+        version_support, version_best_file = await support_from_files(
+            session, version_files[version], python_version
+        )
         if version_support < support:
-            return earliest_supported_version, support
+            return earliest_supported_version, support, best_file
         earliest_supported_version = version
+        best_file = version_best_file
 
-    return earliest_supported_version, support
+    return earliest_supported_version, support, best_file
 
 
 # ==============================
@@ -452,9 +463,9 @@ async def async_main() -> None:
         if len(python_version) != 2:
             parser.error("Python version must be a major and minor version")
 
-    for pkg in args.package:
-        if re.fullmatch(r"(python)?[23]\.\d{1,2}", pkg):
-            parser.error(f"Did you mean to use '--python {pkg}'? (Use -p to specify a package)")
+    for package in args.package:
+        if re.fullmatch(r"(python)?[23]\.\d{1,2}", package):
+            parser.error(f"Did you mean to use '--python {package}'? (Use -p to specify a package)")
 
     previous = [Requirement(r) for r in args.package]
 
@@ -470,14 +481,17 @@ async def async_main() -> None:
 
     previous = deduplicate_reqs(previous)
 
-    supports: list[tuple[Version | None, PythonSupport]] = await asyncio.gather(
+    supports: list[tuple[Version | None, PythonSupport, dict[str, Any] | None]]
+    supports = await asyncio.gather(
         *(dist_support(session, p.name, python_version) for p in previous)
     )
     package_support = dict(zip(previous, supports, strict=True))
-    for previous_req, (version, support) in sorted(
+    for previous_req, (version, support, file_proof) in sorted(
         package_support.items(), key=lambda x: (-x[1][1].value, x[0].name)
     ):
         assert (version is None) == (support <= PythonSupport.has_viable_wheel)
+        assert (file_proof is None) == (support <= PythonSupport.has_viable_wheel)
+        # file_proof["upload-time"] is interesting data
 
         package = previous_req.name
         if version is None:
@@ -493,6 +507,7 @@ async def async_main() -> None:
                     f"{str(previous_req):<{PAD}}  # {support.name} (existing requirement ensures support)"
                 )
             elif support >= PythonSupport.has_viable_wheel:
+                assert support == PythonSupport.has_viable_wheel
                 print(f"{str(previous_req):<{PAD}}  # {support.name} (cannot ensure support)")
             else:
                 print(f"{str(previous_req):<{PAD}}  # {support.name}")
