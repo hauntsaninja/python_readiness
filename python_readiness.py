@@ -396,6 +396,21 @@ def sysconfig_purelib() -> Path:
     return Path(sysconfig.get_paths()["purelib"])
 
 
+def requirements_from_environment() -> list[Requirement]:
+    venv_versions = {}
+    for dist in importlib.metadata.distributions():
+        if (
+            isinstance(dist, importlib.metadata.PathDistribution)
+            and (dist_path := getattr(dist, "_path", None))
+            and isinstance(dist_path, pathlib.Path)
+            and not dist_path.is_relative_to(sysconfig_purelib())
+        ):
+            continue
+        metadata = dist.metadata
+        venv_versions[metadata["Name"]] = Version(metadata["Version"]).base_version
+    return [Requirement(f"{name}>={version}") for name, version in venv_versions.items()]
+
+
 # ==============================
 # main
 # ==============================
@@ -431,18 +446,7 @@ async def async_main() -> None:
 
     if not previous:
         # Default to pulling "requirements" from the current environment
-        venv_versions = {}
-        for dist in importlib.metadata.distributions():
-            if (
-                isinstance(dist, importlib.metadata.PathDistribution)
-                and (dist_path := getattr(dist, "_path", None))
-                and isinstance(dist_path, pathlib.Path)
-                and not dist_path.is_relative_to(sysconfig_purelib())
-            ):
-                continue
-            metadata = dist.metadata
-            venv_versions[metadata["Name"]] = Version(metadata["Version"]).base_version
-        previous = [Requirement(f"{name}>={version}") for name, version in venv_versions.items()]
+        previous = requirements_from_environment()
 
     previous = deduplicate_reqs(previous)
 

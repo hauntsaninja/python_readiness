@@ -14,11 +14,13 @@ from python_readiness import (
     deduplicate_reqs,
     dist_support,
     interpreter_value,
+    latest_python_release,
     parse_requirements_txt,
     previous_minor_python_version,
     safe_version,
     support_from_wheel_tags_helper,
     tag_viable_for_python,
+    requirements_from_environment,
 )
 
 
@@ -103,14 +105,16 @@ def test_parse_requirements_txt(tmp_path) -> None:
 
 
 def test_approx_min_satisfying_version() -> None:
-    assert approx_min_satisfying_version(Requirement("package>=1.2.3")) == Version("1.2.3")
-    assert approx_min_satisfying_version(Requirement("package>1.2.3")) == Version("1.2.3")
-    assert approx_min_satisfying_version(Requirement("package<=2.0")) == Version("0")
     assert approx_min_satisfying_version(Requirement("package==1.4.*")) == Version("1.4")
     assert approx_min_satisfying_version(Requirement("package~=1.5.2")) == Version("1.5.2")
+    assert approx_min_satisfying_version(Requirement("package!=0.1")) == Version("0")
+    assert approx_min_satisfying_version(Requirement("package<=2.0")) == Version("0")
+    assert approx_min_satisfying_version(Requirement("package>=1.2.3")) == Version("1.2.3")
+    assert approx_min_satisfying_version(Requirement("package>1.2.3")) == Version("1.2.3")
     assert approx_min_satisfying_version(Requirement("package")) == Version("0")
 
     assert approx_min_satisfying_version(Requirement("package>=0.5,==1")) == Version("1")
+    assert approx_min_satisfying_version(Requirement("package>=0.5,<2")) == Version("0.5")
 
 
 def test_deduplicate_reqs() -> None:
@@ -156,6 +160,17 @@ def test_deduplicate_reqs() -> None:
     deduped = deduplicate_reqs(reqs)
     assert len(deduped) == 1
     assert str(deduped[0]) == "package>=3"
+
+
+def test_requirements_from_environment() -> None:
+    reqs = {canonical_name(r.name): r for r in requirements_from_environment()}
+    assert reqs["aiohttp"]
+    assert Version("3.9") not in reqs["aiohttp"].specifier
+    assert Version("9999") in reqs["aiohttp"].specifier
+
+    assert reqs["pytest"]
+    assert Version("5") not in reqs["pytest"].specifier
+    assert Version("9999") in reqs["pytest"].specifier
 
 
 def we_have_pytest_asyncio_at_home(fn):
@@ -204,4 +219,19 @@ async def test_python_readiness() -> None:
     assert version is None
     assert support == PythonSupport.unsupported
 
+    version, support = await dist_support(session, "charset-normalizer", (3, 12))
+    assert version == Version("3.3.0")
+    assert support == PythonSupport.has_classifier_and_explicit_wheel
+
+    version, support = await dist_support(session, "ansiconv", (3, 10))
+    assert version is None
+    assert support == PythonSupport.totally_unknown
+
+    await session.close()
+
+
+@we_have_pytest_asyncio_at_home
+async def test_latest_python_release():
+    session = CachedSession()
+    assert await latest_python_release(session) >= (3, 12)
     await session.close()
