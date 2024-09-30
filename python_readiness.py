@@ -208,18 +208,30 @@ def support_from_wheel_tags_helper(
     return best_wheel, support
 
 
-async def support_from_wheels(
-    session: CachedSession, wheels: list[dict[str, Any]], python_version: tuple[int, int]
+async def support_from_files(
+    session: CachedSession, files: list[dict[str, Any]], python_version: tuple[int, int]
 ) -> PythonSupport:
+
+    wheels = []
+    for file in files:
+        if file.get("yanked"):
+            continue
+        if not file["filename"].endswith(".whl"):
+            continue
+        wheels.append(file)
+
     if not wheels:
+        # We could check if the sdist's PKG-INFO has a classifier, but anyone shipping only sdists
+        # probably doesn't care enough about packaging to add classifiers.
         return PythonSupport.totally_unknown
 
     best_wheel, support = support_from_wheel_tags_helper(wheels, python_version)
     assert support <= PythonSupport.has_explicit_wheel
     if support == PythonSupport.unsupported:
-        # We have no wheels that work for this version (and there are other wheels)
-        # (don't bother to check if there is a classifier if we'd have to build sdist for support)
-        return support
+        # We have no wheels that work for this version (and we know there are other wheels)
+        # In theory, the sdist could declare a classifier, but that's going to suck compared
+        # to a wheel and we know this package has wheels.
+        return PythonSupport.unsupported
 
     assert support >= PythonSupport.has_viable_wheel
     if support == PythonSupport.has_viable_wheel:
@@ -251,7 +263,8 @@ async def support_from_wheels(
             return PythonSupport.has_classifier
         elif support == PythonSupport.unsupported:
             # charset_normalizer has a release where they only have pure Python wheels for 3.12
-            # but they do have the classifier. This is debatable, but just trust the upstream
+            # but they do have the classifier. This is debatable, but just trust the upstream.
+            # If a later release ships an explicit wheel, that will mark a higher level of support.
             return PythonSupport.has_classifier
         else:
             raise AssertionError
@@ -269,15 +282,20 @@ async def dist_support(
     resp.raise_for_status()
     data = resp.json()
 
-    version_wheels = collections.defaultdict[Version, list[dict[str, Any]]](list)
-
+    version_files = collections.defaultdict[Version, list[dict[str, Any]]](list)
     for file in data["files"]:
-        if not file["filename"].endswith(".whl"):
+        if file["filename"].endswith(".whl"):
+            _, version, _, _ = packaging.utils.parse_wheel_filename(file["filename"])
+        elif file["filename"].endswith(("tar.gz", ".zip")):
+            try:
+                _, version = packaging.utils.parse_sdist_filename(file["filename"])
+            except packaging.utils.InvalidSdistFilename:
+                continue
+        else:
+            # There's a bunch of things we don't care about
+            # .egg .exe .tar.bz2 .msi .tgz .rpm .ZIP
             continue
-        if file.get("yanked"):
-            continue
-        _, version, _, _ = packaging.utils.parse_wheel_filename(file["filename"])
-        version_wheels[version].append(file)
+        version_files[version].append(file)
 
     all_versions = sorted((safe_version(v) for v in data["versions"]), reverse=True)
     all_versions = [v for v in all_versions if not v.is_prerelease]
@@ -285,7 +303,7 @@ async def dist_support(
         return None, PythonSupport.totally_unknown
     latest_version = all_versions[0]
 
-    support = await support_from_wheels(session, version_wheels[latest_version], python_version)
+    support = await support_from_files(session, version_files[latest_version], python_version)
     if support <= PythonSupport.has_viable_wheel:
         return None, support
 
@@ -295,9 +313,7 @@ async def dist_support(
     for version in all_versions:
         if version == latest_version:
             continue
-        version_support = await support_from_wheels(
-            session, version_wheels[version], python_version
-        )
+        version_support = await support_from_files(session, version_files[version], python_version)
         if version_support < support:
             return earliest_supported_version, support
         earliest_supported_version = version

@@ -175,7 +175,9 @@ def test_requirements_from_environment() -> None:
     assert Version("9999") in reqs["pytest"].specifier
 
 
-def we_have_pytest_asyncio_at_home(fn: Callable[[], Coroutine[Any, Any, None]]) -> Callable[[], None]:
+def we_have_pytest_asyncio_at_home(
+    fn: Callable[[], Coroutine[Any, Any, None]]
+) -> Callable[[], None]:
     @functools.wraps(fn)
     def wrapper() -> None:
         asyncio.run(fn())
