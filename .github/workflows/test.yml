@@ -11,12 +11,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
-      - run: pip install -e . mypy
+      - run: pip install -e . pytest mypy
       - run: mypy .
   tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
-      - run: pip install -e . pytest
-      - run: pytest
+      - run: |
+          python -m venv env
+          source env/bin/activate
+          pip install -e . pytest
+          pytest
