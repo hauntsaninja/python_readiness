@@ -423,6 +423,7 @@ async def async_main() -> None:
     parser.add_argument("--python", default=None)
     parser.add_argument("-p", "--package", action="append", default=[])
     parser.add_argument("-r", "--requirement", action="append", default=[])
+    parser.add_argument("--ignore-existing-requirements", action="store_true")
     args = parser.parse_args()
 
     session = CachedSession()
@@ -447,6 +448,9 @@ async def async_main() -> None:
     if not previous:
         # Default to pulling "requirements" from the current environment
         previous = requirements_from_environment()
+
+    if args.ignore_existing_requirements:
+        previous = [Requirement(r.name) for r in previous]
 
     previous = deduplicate_reqs(previous)
 
