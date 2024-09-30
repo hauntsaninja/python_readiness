@@ -42,7 +42,7 @@ from packaging.version import Version
 # ==============================
 
 
-def _cache_key(url: str, **kwargs) -> str:
+def _cache_key(url: str, **kwargs: Any) -> str:
     key = json.dumps((url, kwargs), sort_keys=True)
     return hashlib.sha256(key.encode()).hexdigest()
 
@@ -65,7 +65,7 @@ class CachedSession:
         self.session = aiohttp.ClientSession()
         self.cache_dir = Path(tempfile.gettempdir()) / "python_readiness_cache"
 
-    async def get(self, url: str, **kwargs) -> CachedResponse:
+    async def get(self, url: str, **kwargs: Any) -> CachedResponse:
         cache_file = self.cache_dir / _cache_key(url, **kwargs)
         if cache_file.is_dir():
             fetch_time = json.loads((cache_file / "fetch").read_text())

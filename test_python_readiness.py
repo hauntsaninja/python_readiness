@@ -1,5 +1,7 @@
 import asyncio
 import functools
+from pathlib import Path
+from typing import Any, Callable, Coroutine
 
 import pytest
 from packaging.requirements import Requirement
@@ -17,10 +19,10 @@ from python_readiness import (
     latest_python_release,
     parse_requirements_txt,
     previous_minor_python_version,
+    requirements_from_environment,
     safe_version,
     support_from_wheel_tags_helper,
     tag_viable_for_python,
-    requirements_from_environment,
 )
 
 
@@ -90,7 +92,7 @@ def test_safe_version() -> None:
     assert safe_version("2.0.0b1") == Version("2.0.0b1")
 
 
-def test_parse_requirements_txt(tmp_path) -> None:
+def test_parse_requirements_txt(tmp_path: Path) -> None:
     content = """
     # Comment line
     packageA>=1.0
@@ -173,9 +175,9 @@ def test_requirements_from_environment() -> None:
     assert Version("9999") in reqs["pytest"].specifier
 
 
-def we_have_pytest_asyncio_at_home(fn):
+def we_have_pytest_asyncio_at_home(fn: Callable[[], Coroutine[Any, Any, None]]) -> Callable[[], None]:
     @functools.wraps(fn)
-    def wrapper():
+    def wrapper() -> None:
         asyncio.run(fn())
 
     return wrapper
@@ -231,7 +233,7 @@ async def test_python_readiness() -> None:
 
 
 @we_have_pytest_asyncio_at_home
-async def test_latest_python_release():
+async def test_latest_python_release() -> None:
     session = CachedSession()
     assert await latest_python_release(session) >= (3, 12)
     await session.close()
