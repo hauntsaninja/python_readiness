@@ -219,8 +219,6 @@ async def support_from_files(
 
     wheels = []
     for file in files:
-        if file.get("yanked"):
-            continue
         if not file["filename"].endswith(".whl"):
             continue
         wheels.append(file)
@@ -293,6 +291,8 @@ async def dist_support(
 
     version_files = collections.defaultdict[Version, list[dict[str, Any]]](list)
     for file in data["files"]:
+        if file.get("yanked"):
+            continue
         if file["filename"].endswith(".whl"):
             _, version, _, _ = packaging.utils.parse_wheel_filename(file["filename"])
         elif file["filename"].endswith(("tar.gz", ".zip")):
@@ -307,7 +307,9 @@ async def dist_support(
         version_files[version].append(file)
 
     all_versions = sorted((safe_version(v) for v in data["versions"]), reverse=True)
-    all_versions = [v for v in all_versions if not v.is_prerelease]
+    # Note we check version_files[v] to filter out yanked releases (that would otherwise be treated
+    # as totally unknown)
+    all_versions = [v for v in all_versions if not v.is_prerelease and version_files[v]]
     if not all_versions:
         return None, PythonSupport.totally_unknown, None
     latest_version = all_versions[0]
@@ -478,7 +480,7 @@ async def python_readiness(
         if pending:
             print(
                 f"Determined support for {len(tasks) - len(pending)}/{len(tasks)} packages...",
-                file=sys.stderr
+                file=sys.stderr,
             )
 
     out = []

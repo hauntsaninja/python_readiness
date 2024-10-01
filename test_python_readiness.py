@@ -258,6 +258,22 @@ async def test_dist_support() -> None:
 
 
 @we_have_pytest_asyncio_at_home
+async def test_dist_support_yanked() -> None:
+    session = CachedSession()
+
+    version, support, file_proof = await dist_support(session, "memray", (3, 11))
+    assert version == Version("1.3.0")
+    assert support == PythonSupport.has_classifier_and_explicit_wheel
+    assert file_proof is not None
+    assert (
+        file_proof["filename"]
+        == "memray-1.3.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+    )
+
+    await session.close()
+
+
+@we_have_pytest_asyncio_at_home
 async def test_dist_support_large() -> None:
     session = CachedSession()
 
@@ -314,11 +330,14 @@ async def test_python_readiness_e2e() -> None:
         python_version=(3, 11),
         ignore_existing_requirements=True,
     )
-    assert readiness == """\
+    assert (
+        readiness
+        == """\
 aiohttp>=3.9.4                            # has_classifier_and_explicit_wheel
 mypy>=0.990                               # has_classifier_and_explicit_wheel
 typing-extensions>=4.5.0                  # has_classifier
 blobfile                                  # has_viable_wheel (cannot ensure support)"""
+    )
 
     readiness = await python_readiness(
         packages=[
@@ -333,9 +352,12 @@ blobfile                                  # has_viable_wheel (cannot ensure supp
         ignore_existing_requirements=False,
     )
     print(readiness)
-    assert readiness == """\
+    assert (
+        readiness
+        == """\
 aiohttp>=3.9.4                            # has_classifier_and_explicit_wheel
 mypy>=1                                   # has_classifier_and_explicit_wheel (existing requirement ensures support)
 typing-extensions>=4.5.0                  # has_classifier (previously: typing-extensions>=4)
 blobfile>=0.1                             # has_viable_wheel (cannot ensure support)
 ansiconv>=0.1                             # totally_unknown"""
+    )
