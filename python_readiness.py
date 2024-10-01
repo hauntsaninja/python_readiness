@@ -72,7 +72,8 @@ class CachedSession:
         cache_file = self.cache_dir / _cache_key(url, **kwargs, cache_version=1)
         if not self.skip_cache and cache_file.is_dir():
             fetch_time = json.loads((cache_file / "fetch").read_text())
-            if fetch_time > time.time() - 900:
+            if fetch_time > time.time() - 3600:
+                await asyncio.sleep(0)
                 status = int((cache_file / "status").read_text())
                 with gzip.open(cache_file / "body.gz", "rb") as f:
                     body = f.read()
