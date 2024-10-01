@@ -79,8 +79,13 @@ class CachedSession:
                     body = f.read()
                 return CachedResponse(body=body, status=status)
 
-        async with self.session.get(url, **kwargs) as resp:
-            ret = CachedResponse(body=await resp.read(), status=resp.status)
+        retries = 3
+        for i in range(retries):
+            async with self.session.get(url, **kwargs) as resp:
+                if i == retries - 1 or not (500 <= resp.status < 600):
+                    ret = CachedResponse(body=await resp.read(), status=resp.status)
+                    break
+            await asyncio.sleep(0.1)
 
         cache_file.mkdir(parents=True, exist_ok=True)
         (cache_file / "fetch").write_text(json.dumps(time.time()))
