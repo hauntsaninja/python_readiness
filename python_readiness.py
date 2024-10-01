@@ -534,9 +534,10 @@ def main() -> None:
     parser.add_argument("--ignore-existing-requirements", action="store_true")
     args = parser.parse_args()
 
-    python_version: tuple[int, int]
+    python_version: tuple[int, int] | None = None
     if args.python is not None:
         python_version = tuple(map(int, args.python.split(".")))  # type: ignore
+        assert isinstance(python_version, tuple)
         if len(python_version) != 2:
             parser.error("Python version must be a major and minor version")
 
