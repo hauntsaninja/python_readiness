@@ -256,6 +256,43 @@ async def test_python_readiness() -> None:
 
 
 @we_have_pytest_asyncio_at_home
+async def test_python_readiness_large() -> None:
+    session = CachedSession()
+
+    version, _, _ = await dist_support(session, "boto3", (3, 8))
+    assert version == Version("1.13.16")
+    version, _, _ = await dist_support(session, "boto3", (3, 9))
+    assert version == Version("1.18.48")
+    version, _, _ = await dist_support(session, "boto3", (3, 10))
+    assert version == Version("1.18.49")
+    version, _, _ = await dist_support(session, "boto3", (3, 11))
+    assert version == Version("1.24.14")
+    version, _, _ = await dist_support(session, "boto3", (3, 12))
+    assert version == Version("1.28.27")
+
+    version, _, _ = await dist_support(session, "botocore", (3, 8))
+    assert version == Version("1.13.45")
+    version, _, _ = await dist_support(session, "botocore", (3, 9))
+    assert version == Version("1.21.49")
+    version, _, _ = await dist_support(session, "botocore", (3, 10))
+    assert version == Version("1.21.49")
+    version, _, _ = await dist_support(session, "botocore", (3, 11))
+    assert version == Version("1.27.13")
+    version, _, _ = await dist_support(session, "botocore", (3, 12))
+    assert version == Version("1.31.27")
+
+    version, _, _ = await dist_support(session, "openai", (3, 8))
+    assert version == Version("1.0.0")
+    version, _, _ = await dist_support(session, "openai", (3, 12))
+    assert version == Version("1.0.0")
+
+    version, _, _ = await dist_support(session, "hypothesis", (3, 8))
+    assert version == Version("4.44.3")
+    version, _, _ = await dist_support(session, "hypothesis", (3, 12))
+    assert version == Version("6.91.0")
+
+
+@we_have_pytest_asyncio_at_home
 async def test_latest_python_release() -> None:
     session = CachedSession()
     assert await latest_python_release(session) >= (3, 12)
