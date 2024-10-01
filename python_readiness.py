@@ -15,6 +15,7 @@ import email.parser
 import email.policy
 import enum
 import functools
+import gzip
 import hashlib
 import importlib.metadata
 import io
@@ -66,22 +67,23 @@ class CachedSession:
         self.cache_dir = Path(tempfile.gettempdir()) / "python_readiness_cache"
 
     async def get(self, url: str, **kwargs: Any) -> CachedResponse:
-        cache_file = self.cache_dir / _cache_key(url, **kwargs)
+        cache_file = self.cache_dir / _cache_key(url, **kwargs, cache_version=1)
         if cache_file.is_dir():
             fetch_time = json.loads((cache_file / "fetch").read_text())
             if fetch_time > time.time() - 900:
-                return CachedResponse(
-                    body=(cache_file / "body").read_bytes(),
-                    status=int((cache_file / "status").read_text()),
-                )
+                status = int((cache_file / "status").read_text())
+                with gzip.open(cache_file / "body.gz", "rb") as f:
+                    body = f.read()
+                return CachedResponse(body=body, status=status)
 
         async with self.session.get(url, **kwargs) as resp:
             ret = CachedResponse(body=await resp.read(), status=resp.status)
 
         cache_file.mkdir(parents=True, exist_ok=True)
         (cache_file / "fetch").write_text(json.dumps(time.time()))
-        (cache_file / "body").write_bytes(ret.body)
         (cache_file / "status").write_text(str(ret.status))
+        with gzip.open(cache_file / "body.gz", "wb") as f:
+            f.write(ret.body)
         return ret
 
     async def close(self) -> None:
