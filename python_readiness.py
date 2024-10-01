@@ -329,23 +329,39 @@ async def dist_support(
     if support <= PythonSupport.has_viable_wheel:
         return None, support, None
 
-    # Try to figure out which version added the classifier / explicit wheel
-    # Just do a dumb linear search
-    # Note that if a package backports support for newer Python versions to an older branch of
-    # development (like sqlalchemy does), we won't necessarily find the earliest supported version
-    earliest_supported_version = latest_version
-    for version in all_versions:
-        if version == latest_version:
-            continue
+    left = 0
+    right = len(all_versions)
+    while left < right:
+        left_release = all_versions[left].release
+        right_release = all_versions[right - 1].release
+        left_release = left_release + (0,) * (len(right_release) - len(left_release))
+        right_release = right_release + (0,) * (len(left_release) - len(right_release))
+        # Say left_release = (2, 8, 4) and right_release = (2, 1, 1)
+        # We'll want to test the largest version < (2, 5, 0)
+        if left_release != right_release:
+            shared_prefix_len = next(
+                i for i, (a, b) in enumerate(zip(left_release, right_release)) if a != b
+            )
+            mid_release = left_release[:shared_prefix_len] + (
+                (left_release[shared_prefix_len] + right_release[shared_prefix_len] + 1) // 2,
+            )
+            assert left_release >= mid_release >= right_release
+            mid = left + next(
+                i for i, v in enumerate(all_versions[left:right]) if v.release < mid_release
+            )
+        else:
+            mid = (left + right) // 2
+
         version_support, version_best_file = await support_from_files(
-            session, version_files[version], python_version
+            session, version_files[all_versions[mid]], python_version
         )
         if version_support < support:
-            return earliest_supported_version, support, best_file
-        earliest_supported_version = version
-        best_file = version_best_file
+            right = mid
+        else:
+            left = mid + 1
+            best_file = version_best_file
 
-    return earliest_supported_version, support, best_file
+    return all_versions[right - 1], support, best_file
 
 
 # ==============================
