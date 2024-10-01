@@ -254,6 +254,12 @@ async def test_dist_support() -> None:
     assert file_proof is not None
     assert file_proof["filename"] == "torch-1.13.0-cp311-cp311-manylinux1_x86_64.whl"
 
+    version, support, file_proof = await dist_support(session, "psygnal", (3, 11))
+    assert version == Version("0.6.0.post0")
+    assert support == PythonSupport.has_classifier_and_explicit_wheel
+    assert file_proof is not None
+    assert file_proof["filename"] == "psygnal-0.6.0.post0-cp311-cp311-win_amd64.whl"
+
     await session.close()
 
 
