@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import tempfile
 from pathlib import Path
 from typing import Any, Callable, Coroutine
 
@@ -23,6 +24,7 @@ from python_readiness import (
     safe_version,
     support_from_wheel_tags_helper,
     tag_viable_for_python,
+    python_readiness,
 )
 
 
@@ -186,7 +188,7 @@ def we_have_pytest_asyncio_at_home(
 
 
 @we_have_pytest_asyncio_at_home
-async def test_python_readiness() -> None:
+async def test_dist_support() -> None:
     session = CachedSession()
 
     version, support, file_proof = await dist_support(session, "mypy", (3, 11))
@@ -256,7 +258,7 @@ async def test_python_readiness() -> None:
 
 
 @we_have_pytest_asyncio_at_home
-async def test_python_readiness_large() -> None:
+async def test_dist_support_large() -> None:
     session = CachedSession()
 
     version, _, _ = await dist_support(session, "boto3", (3, 8))
@@ -297,3 +299,43 @@ async def test_latest_python_release() -> None:
     session = CachedSession()
     assert await latest_python_release(session) >= (3, 12)
     await session.close()
+
+
+@we_have_pytest_asyncio_at_home
+async def test_python_readiness_e2e() -> None:
+    readiness = await python_readiness(
+        packages=[
+            Requirement("mypy>=1"),
+            Requirement("typing-extensions>=4"),
+            Requirement("aiohttp"),
+            Requirement("blobfile"),
+        ],
+        req_files=[],
+        python_version=(3, 11),
+        ignore_existing_requirements=True,
+    )
+    assert readiness == """\
+aiohttp>=3.9.4                            # has_classifier_and_explicit_wheel
+mypy>=0.990                               # has_classifier_and_explicit_wheel
+typing-extensions>=4.5.0                  # has_classifier
+blobfile                                  # has_viable_wheel (cannot ensure support)"""
+
+    readiness = await python_readiness(
+        packages=[
+            Requirement("mypy>=1"),
+            Requirement("typing-extensions>=4"),
+            Requirement("aiohttp"),
+            Requirement("blobfile>=0.1"),
+            Requirement("ansiconv>=0.1"),
+        ],
+        req_files=[],
+        python_version=(3, 11),
+        ignore_existing_requirements=False,
+    )
+    print(readiness)
+    assert readiness == """\
+aiohttp>=3.9.4                            # has_classifier_and_explicit_wheel
+mypy>=1                                   # has_classifier_and_explicit_wheel (existing requirement ensures support)
+typing-extensions>=4.5.0                  # has_classifier (previously: typing-extensions>=4)
+blobfile>=0.1                             # has_viable_wheel (cannot ensure support)
+ansiconv>=0.1                             # totally_unknown"""

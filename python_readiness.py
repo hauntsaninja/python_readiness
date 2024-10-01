@@ -448,45 +448,30 @@ def requirements_from_environment() -> list[Requirement]:
 # ==============================
 
 
-async def async_main() -> None:
-    assert sys.version_info >= (3, 9)
+async def python_readiness(
+    packages: list[Requirement],
+    *,
+    python_version: tuple[int, int] | None,
+    req_files: list[str],
+    ignore_existing_requirements: bool,
+) -> str:
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--python", default=None)
-    parser.add_argument("-p", "--package", action="append", default=[])
-    parser.add_argument("-r", "--requirement", action="append", default=[])
-    parser.add_argument("--ignore-existing-requirements", action="store_true")
-    args = parser.parse_args()
+    for req_file in req_files:
+        packages.extend(Requirement(req) for req in parse_requirements_txt(req_file))
+    if not packages:
+        # Default to pulling "requirements" from the current environment
+        packages = requirements_from_environment()
+    if ignore_existing_requirements:
+        packages = [Requirement(r.name) for r in packages]
+    packages = deduplicate_reqs(packages)
 
     session = CachedSession()
 
-    python_version: tuple[int, int]
-    if args.python is None:
+    if python_version is None:
         python_version = await latest_python_release(session)
-    else:
-        python_version = tuple(map(int, args.python.split(".")))  # type: ignore
-        if len(python_version) != 2:
-            parser.error("Python version must be a major and minor version")
+    assert len(python_version) == 2
 
-    for package in args.package:
-        if re.fullmatch(r"(python)?[23]\.\d{1,2}", package):
-            parser.error(f"Did you mean to use '--python {package}'? (Use -p to specify a package)")
-
-    previous = [Requirement(r) for r in args.package]
-
-    for req_file in args.requirement:
-        previous.extend(Requirement(req) for req in parse_requirements_txt(req_file))
-
-    if not previous:
-        # Default to pulling "requirements" from the current environment
-        previous = requirements_from_environment()
-
-    if args.ignore_existing_requirements:
-        previous = [Requirement(r.name) for r in previous]
-
-    previous = deduplicate_reqs(previous)
-
-    tasks = [asyncio.create_task(dist_support(session, p.name, python_version)) for p in previous]
+    tasks = [asyncio.create_task(dist_support(session, p.name, python_version)) for p in packages]
     pending = set(tasks)
     while pending:
         _done, pending = await asyncio.wait(pending, timeout=1)
@@ -495,7 +480,9 @@ async def async_main() -> None:
                 f"Determined support for {len(tasks) - len(pending)}/{len(tasks)} packages...",
                 file=sys.stderr
             )
-    package_support = {p: await t for p, t in zip(previous, tasks, strict=True)}
+
+    out = []
+    package_support = {p: await t for p, t in zip(packages, tasks, strict=True)}
     for previous_req, (version, support, file_proof) in sorted(
         package_support.items(), key=lambda x: (-x[1][1].value, x[0].name)
     ):
@@ -513,24 +500,52 @@ async def async_main() -> None:
         previous_req_min = approx_min_satisfying_version(previous_req)
         if previous_req_min in new_req.specifier:
             if support > PythonSupport.has_viable_wheel:
-                print(
+                out.append(
                     f"{str(previous_req):<{PAD}}  # {support.name} (existing requirement ensures support)"
                 )
             elif support >= PythonSupport.has_viable_wheel:
                 assert support == PythonSupport.has_viable_wheel
-                print(f"{str(previous_req):<{PAD}}  # {support.name} (cannot ensure support)")
+                out.append(f"{str(previous_req):<{PAD}}  # {support.name} (cannot ensure support)")
             else:
-                print(f"{str(previous_req):<{PAD}}  # {support.name}")
+                out.append(f"{str(previous_req):<{PAD}}  # {support.name}")
         elif previous_req.specifier:
-            print(f"{str(new_req):<{PAD}}  # {support.name} (previously: {str(previous_req)})")
+            out.append(f"{str(new_req):<{PAD}}  # {support.name} (previously: {str(previous_req)})")
         else:
-            print(f"{str(new_req):<{PAD}}  # {support.name}")
+            out.append(f"{str(new_req):<{PAD}}  # {support.name}")
 
     await session.close()
+    return "\n".join(out)
 
 
 def main() -> None:
-    asyncio.run(async_main())
+    assert sys.version_info >= (3, 9)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--python", default=None)
+    parser.add_argument("-p", "--package", action="append", default=[])
+    parser.add_argument("-r", "--requirement", action="append", default=[])
+    parser.add_argument("--ignore-existing-requirements", action="store_true")
+    args = parser.parse_args()
+
+    python_version: tuple[int, int]
+    if args.python is not None:
+        python_version = tuple(map(int, args.python.split(".")))  # type: ignore
+        if len(python_version) != 2:
+            parser.error("Python version must be a major and minor version")
+
+    for package in args.package:
+        if re.fullmatch(r"(python)?[23]\.\d{1,2}", package):
+            parser.error(f"Did you mean to use '--python {package}'? (Use -p to specify a package)")
+
+    out = asyncio.run(
+        python_readiness(
+            [Requirement(p) for p in args.package],
+            python_version=python_version,
+            req_files=args.requirement,
+            ignore_existing_requirements=args.ignore_existing_requirements,
+        )
+    )
+    print(out)
 
 
 if __name__ == "__main__":
