@@ -483,10 +483,18 @@ async def async_main() -> None:
 
     previous = deduplicate_reqs(previous)
 
-    supports: list[tuple[Version | None, PythonSupport, dict[str, Any] | None]]
-    supports = await asyncio.gather(
-        *(dist_support(session, p.name, python_version) for p in previous)
-    )
+    start_t = time.monotonic()
+    report_t = start_t
+    supports: list[tuple[Version | None, PythonSupport, dict[str, Any] | None]] = []
+    for i, future in enumerate(
+        asyncio.as_completed([dist_support(session, p.name, python_version) for p in previous]),
+        start=1,
+    ):
+        if (time.monotonic() - report_t > 1) or (i == len(previous) and report_t != start_t):
+            print(f"Determined support for {i}/{len(previous)} packages...", file=sys.stderr)
+            report_t = time.monotonic()
+        supports.append(await future)
+
     package_support = dict(zip(previous, supports, strict=True))
     for previous_req, (version, support, file_proof) in sorted(
         package_support.items(), key=lambda x: (-x[1][1].value, x[0].name)
