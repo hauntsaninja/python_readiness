@@ -62,7 +62,7 @@ class CachedResponse:
 
 class CachedSession:
     def __init__(self) -> None:
-        self.session = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(connect=15, total=60))
         self.cache_dir = Path(tempfile.gettempdir()) / "python_readiness_cache"
 
     async def get(self, url: str, **kwargs: Any) -> CachedResponse:
