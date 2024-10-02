@@ -467,8 +467,14 @@ def requirements_from_ext_environment(env_path: Path) -> list[Requirement]:
         ],
         capture_output=True,
         text=True,
-        check=True,
     )
+
+    if freeze.returncode != 0:
+        err = (
+            f"Failed to read environment data from {env_path}\n"
+            f"pip error Message: \"{freeze.stderr.strip()}\""
+        )
+        raise RuntimeError(err)
 
     packages = json.loads(freeze.stdout)
 
