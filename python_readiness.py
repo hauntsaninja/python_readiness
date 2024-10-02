@@ -3,6 +3,7 @@
 # dependencies = [
 #     "aiohttp>=3.10",
 #     "packaging>=24",
+#     "pip>=24.2",  # pip is required for subprocess, uv won't include it by default
 # ]
 # ///
 from __future__ import annotations
@@ -23,6 +24,7 @@ import json
 import os
 import pathlib
 import re
+import subprocess
 import sys
 import sysconfig
 import tempfile
@@ -450,6 +452,36 @@ def requirements_from_environment() -> list[Requirement]:
     return [Requirement(f"{name}>={version}") for name, version in venv_versions.items()]
 
 
+def requirements_from_ext_environment(env_path: Path) -> list[Requirement]:
+    # Query PIP to get the external environment packages
+    env_str = str(env_path.resolve())
+    freeze = subprocess.run(
+        [
+            sys.executable,
+            "-m", "pip",
+            "--python", env_str,
+            "list",
+            "--exclude-editable",
+            "--exclude", "pip",
+            "--format", "json",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    packages = json.loads(freeze.stdout)
+
+    requirements = []
+    for package in packages:
+        name = package.get("name")
+        version = package.get("version")
+        if name and version:
+            requirements.append(Requirement(f"{name}>={version}"))
+
+    return requirements
+
+
 # ==============================
 # main
 # ==============================
@@ -461,10 +493,15 @@ async def python_readiness(
     python_version: tuple[int, int] | None,
     req_files: list[str],
     ignore_existing_requirements: bool,
+    envs: list[str],
 ) -> str:
 
     for req_file in req_files:
         packages.extend(Requirement(req) for req in parse_requirements_txt(req_file))
+
+    for env in envs:
+        packages.extend(requirements_from_ext_environment(Path(env)))
+
     if not packages:
         # Default to pulling "requirements" from the current environment
         packages = requirements_from_environment()
@@ -529,6 +566,12 @@ def main() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--python", default=None)
+    parser.add_argument(
+        "-e", "--env",
+        action="append",
+        default=[],
+        help="Path to a virtual environment"
+    )
     parser.add_argument("-p", "--package", action="append", default=[])
     parser.add_argument("-r", "--requirement", action="append", default=[])
     parser.add_argument("--ignore-existing-requirements", action="store_true")
@@ -551,6 +594,7 @@ def main() -> None:
             python_version=python_version,
             req_files=args.requirement,
             ignore_existing_requirements=args.ignore_existing_requirements,
+            envs=args.env,
         )
     )
     print(out)

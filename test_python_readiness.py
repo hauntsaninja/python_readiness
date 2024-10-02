@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import tempfile
+import sys
 from pathlib import Path
 from typing import Any, Callable, Coroutine
 
@@ -21,6 +22,7 @@ from python_readiness import (
     parse_requirements_txt,
     previous_minor_python_version,
     requirements_from_environment,
+    requirements_from_ext_environment,
     safe_version,
     support_from_wheel_tags_helper,
     tag_viable_for_python,
@@ -168,6 +170,18 @@ def test_deduplicate_reqs() -> None:
 
 def test_requirements_from_environment() -> None:
     reqs = {canonical_name(r.name): r for r in requirements_from_environment()}
+    assert reqs["aiohttp"]
+    assert Version("3.9") not in reqs["aiohttp"].specifier
+    assert Version("9999") in reqs["aiohttp"].specifier
+
+    assert reqs["pytest"]
+    assert Version("5") not in reqs["pytest"].specifier
+    assert Version("9999") in reqs["pytest"].specifier
+
+
+def test_requirements_from_ext_environment() -> None:
+    this_env = Path(sys.prefix)
+    reqs = {canonical_name(r.name): r for r in requirements_from_ext_environment(this_env)}
     assert reqs["aiohttp"]
     assert Version("3.9") not in reqs["aiohttp"].specifier
     assert Version("9999") in reqs["aiohttp"].specifier
