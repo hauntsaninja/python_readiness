@@ -181,14 +181,9 @@ def test_requirements_from_environment() -> None:
 
 def test_requirements_from_ext_environment() -> None:
     this_env = Path(sys.prefix)
-    reqs = {canonical_name(r.name): r for r in requirements_from_ext_environment(this_env)}
-    assert reqs["aiohttp"]
-    assert Version("3.9") not in reqs["aiohttp"].specifier
-    assert Version("9999") in reqs["aiohttp"].specifier
 
-    assert reqs["pytest"]
-    assert Version("5") not in reqs["pytest"].specifier
-    assert Version("9999") in reqs["pytest"].specifier
+    # Both methods should give the same result for the active venv
+    assert requirements_from_environment() == requirements_from_ext_environment(this_env)
 
     with pytest.raises(RuntimeError):
         _ = requirements_from_ext_environment(Path(sys.prefix) / "not_a_venv")

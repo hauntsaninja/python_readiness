@@ -461,8 +461,6 @@ def requirements_from_ext_environment(env_path: Path) -> list[Requirement]:
             "-m", "pip",
             "--python", env_str,
             "list",
-            "--exclude-editable",
-            "--exclude", "pip",
             "--format", "json",
         ],
         capture_output=True,
