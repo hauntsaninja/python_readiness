@@ -190,6 +190,9 @@ def test_requirements_from_ext_environment() -> None:
     assert Version("5") not in reqs["pytest"].specifier
     assert Version("9999") in reqs["pytest"].specifier
 
+    with pytest.raises(RuntimeError):
+        _ = requirements_from_ext_environment(Path(sys.prefix) / "not_a_venv")
+
 
 def we_have_pytest_asyncio_at_home(
     fn: Callable[[], Coroutine[Any, Any, None]]
