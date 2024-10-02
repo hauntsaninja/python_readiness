@@ -349,6 +349,7 @@ async def test_python_readiness_e2e() -> None:
         req_files=[],
         python_version=(3, 11),
         ignore_existing_requirements=True,
+        envs=[],
     )
     assert (
         readiness
@@ -370,6 +371,7 @@ blobfile                                  # has_viable_wheel (cannot ensure supp
         req_files=[],
         python_version=(3, 11),
         ignore_existing_requirements=False,
+        envs=[],
     )
     print(readiness)
     assert (
