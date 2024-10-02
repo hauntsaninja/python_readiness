@@ -3,7 +3,7 @@
 # dependencies = [
 #     "aiohttp>=3.10",
 #     "packaging>=24",
-#     "pip>=24.2",  # pip is required for subprocess, uv won't include it by default
+#     "pip>=24.2",  # pip is required for subprocess, tools may not include it by default
 # ]
 # ///
 from __future__ import annotations
