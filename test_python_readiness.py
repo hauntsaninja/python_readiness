@@ -180,13 +180,11 @@ def test_requirements_from_environment() -> None:
 
 
 def test_requirements_from_ext_environment() -> None:
-    this_env = Path(sys.prefix)
-
     # Both methods should give the same result for the active venv
-    assert requirements_from_environment() == requirements_from_ext_environment(this_env)
+    assert requirements_from_environment() == requirements_from_ext_environment(sys.prefix)
 
     with pytest.raises(RuntimeError):
-        _ = requirements_from_ext_environment(Path(sys.prefix) / "not_a_venv")
+        _ = requirements_from_ext_environment(str(Path(sys.prefix) / "not_a_venv"))
 
 
 def we_have_pytest_asyncio_at_home(

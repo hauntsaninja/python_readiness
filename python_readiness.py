@@ -452,14 +452,13 @@ def requirements_from_environment() -> list[Requirement]:
     return [Requirement(f"{name}>={version}") for name, version in venv_versions.items()]
 
 
-def requirements_from_ext_environment(env_path: Path) -> list[Requirement]:
+def requirements_from_ext_environment(env_path: str) -> list[Requirement]:
     # Query PIP to get the external environment packages
-    env_str = str(env_path.resolve())
     freeze = subprocess.run(
         [
             sys.executable,
             "-m", "pip",
-            "--python", env_str,
+            "--python", env_path,
             "list",
             "--format", "json",
         ],
@@ -506,7 +505,7 @@ async def python_readiness(
 
     if envs:
         for env in envs:
-            packages.extend(requirements_from_ext_environment(Path(env)))
+            packages.extend(requirements_from_ext_environment(env))
 
     if not packages:
         # Default to pulling "requirements" from the current environment
