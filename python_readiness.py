@@ -481,6 +481,7 @@ def requirements_from_ext_environment(env_path: Path) -> list[Requirement]:
         name = package.get("name")
         version = package.get("version")
         if name and version:
+            version = Version(version).base_version
             requirements.append(Requirement(f"{name}>={version}"))
 
     return requirements
