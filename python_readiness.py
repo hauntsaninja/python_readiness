@@ -498,14 +498,15 @@ async def python_readiness(
     python_version: tuple[int, int] | None,
     req_files: list[str],
     ignore_existing_requirements: bool,
-    envs: list[str],
+    envs: list[str] | None = None,
 ) -> str:
 
     for req_file in req_files:
         packages.extend(Requirement(req) for req in parse_requirements_txt(req_file))
 
-    for env in envs:
-        packages.extend(requirements_from_ext_environment(Path(env)))
+    if envs:
+        for env in envs:
+            packages.extend(requirements_from_ext_environment(Path(env)))
 
     if not packages:
         # Default to pulling "requirements" from the current environment
