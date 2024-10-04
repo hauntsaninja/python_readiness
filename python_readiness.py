@@ -489,7 +489,6 @@ def requirements_from_ext_environment(env_path: str) -> list[Requirement]:
             text=True,
         )
     except FileNotFoundError:
-        # The original error is incredibly long
         raise RuntimeError(f"Could not find Python environment at {env_path}")
 
     if result.returncode != 0:
