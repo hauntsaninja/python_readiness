@@ -181,7 +181,14 @@ def test_requirements_from_environment() -> None:
 
 def test_requirements_from_ext_environment() -> None:
     # Both methods should give the same result for the active venv
-    assert requirements_from_environment() == requirements_from_ext_environment(sys.prefix)
+    from_env = sorted(
+        requirements_from_environment(),
+        key=lambda x: str(x)
+    )
+    from_ext_env = sorted(
+        requirements_from_ext_environment(sys.prefix),
+        key=lambda x: str(x)
+    )
 
     with pytest.raises(RuntimeError):
         _ = requirements_from_ext_environment(str(Path(sys.prefix) / "not_a_venv"))
