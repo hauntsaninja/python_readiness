@@ -19,6 +19,11 @@ Check if your current environment is ready for the latest Python:
 python_readiness
 ```
 
+Check if another virtual environment is ready for the latest Python:
+```bash
+python_readiness -e path/to/.venv
+```
+
 Check if a specific package is ready for a specific Python:
 ```bash
 python_readiness -p numpy --python 3.11

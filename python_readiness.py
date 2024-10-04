@@ -23,9 +23,11 @@ import json
 import os
 import pathlib
 import re
+import subprocess
 import sys
 import sysconfig
 import tempfile
+import textwrap
 import time
 import zipfile
 from pathlib import Path
@@ -450,6 +452,60 @@ def requirements_from_environment() -> list[Requirement]:
     return [Requirement(f"{name}>={version}") for name, version in venv_versions.items()]
 
 
+def requirements_from_ext_environment(env_path: str) -> list[Requirement]:
+    python_exe = r"Scripts\python.exe" if sys.platform == "win32" else "bin/python"
+    python_path = str(Path(env_path) / python_exe)
+
+    code = textwrap.dedent("""\
+        import importlib.metadata
+        import sysconfig
+        
+        from pathlib import Path
+        
+        def get_requirements():
+            purelib = Path(sysconfig.get_paths()["purelib"])
+            venv_versions = {}
+            for dist in importlib.metadata.distributions():
+                if (
+                    isinstance(dist, importlib.metadata.PathDistribution)
+                    and (dist_path := getattr(dist, '_path', None))
+                    and isinstance(dist_path, Path)
+                    and not dist_path.is_relative_to(purelib)
+                ):
+                    continue
+                metadata = dist.metadata
+                name = metadata['Name']
+                version = metadata['Version']
+                print(f'{name}=={version}')
+        
+        get_requirements()
+    """)
+
+    try:
+        result = subprocess.run(
+            [python_path, "-"],
+            input=code,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        raise RuntimeError(f"Could not find Python environment at {env_path}")
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Failed to read environment data from {env_path}\n"
+            f"Error from venv: {result.stderr}\n"
+        )
+
+    requirements = []
+    for line in result.stdout.split("\n"):
+        if line := line.strip():
+            name, version = line.split("==")
+            requirements.append(Requirement(f"{name}>={Version(version).base_version}"))
+
+    return requirements
+
+
 # ==============================
 # main
 # ==============================
@@ -461,10 +517,16 @@ async def python_readiness(
     python_version: tuple[int, int] | None,
     req_files: list[str],
     ignore_existing_requirements: bool,
+    envs: list[str] | None = None,
 ) -> str:
 
     for req_file in req_files:
         packages.extend(Requirement(req) for req in parse_requirements_txt(req_file))
+
+    if envs:
+        for env in envs:
+            packages.extend(requirements_from_ext_environment(env))
+
     if not packages:
         # Default to pulling "requirements" from the current environment
         packages = requirements_from_environment()
@@ -529,6 +591,12 @@ def main() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--python", default=None)
+    parser.add_argument(
+        "-e", "--env",
+        action="append",
+        default=[],
+        help="Path to a virtual environment"
+    )
     parser.add_argument("-p", "--package", action="append", default=[])
     parser.add_argument("-r", "--requirement", action="append", default=[])
     parser.add_argument("--ignore-existing-requirements", action="store_true")
@@ -551,6 +619,7 @@ def main() -> None:
             python_version=python_version,
             req_files=args.requirement,
             ignore_existing_requirements=args.ignore_existing_requirements,
+            envs=args.env,
         )
     )
     print(out)

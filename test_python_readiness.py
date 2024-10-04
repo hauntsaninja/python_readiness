@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import tempfile
+import sys
 from pathlib import Path
 from typing import Any, Callable, Coroutine
 
@@ -21,6 +22,7 @@ from python_readiness import (
     parse_requirements_txt,
     previous_minor_python_version,
     requirements_from_environment,
+    requirements_from_ext_environment,
     safe_version,
     support_from_wheel_tags_helper,
     tag_viable_for_python,
@@ -175,6 +177,21 @@ def test_requirements_from_environment() -> None:
     assert reqs["pytest"]
     assert Version("5") not in reqs["pytest"].specifier
     assert Version("9999") in reqs["pytest"].specifier
+
+
+def test_requirements_from_ext_environment() -> None:
+    # Both methods should give the same result for the active venv
+    from_env = sorted(
+        requirements_from_environment(),
+        key=lambda x: str(x)
+    )
+    from_ext_env = sorted(
+        requirements_from_ext_environment(sys.prefix),
+        key=lambda x: str(x)
+    )
+
+    with pytest.raises(RuntimeError):
+        _ = requirements_from_ext_environment(str(Path(sys.prefix) / "not_a_venv"))
 
 
 def we_have_pytest_asyncio_at_home(
