@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.9"
 # dependencies = [
 #     "aiohttp>=3.10",
 #     "packaging>=24",
@@ -551,7 +551,7 @@ async def python_readiness(
             )
 
     out = []
-    package_support = {p: await t for p, t in zip(packages, tasks, strict=True)}
+    package_support = {p: await t for p, t in zip(packages, tasks)}
     for previous_req, (version, support, file_proof) in sorted(
         package_support.items(), key=lambda x: (-x[1][1].value, x[0].name)
     ):
