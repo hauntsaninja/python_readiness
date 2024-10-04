@@ -3,7 +3,6 @@
 # dependencies = [
 #     "aiohttp>=3.10",
 #     "packaging>=24",
-#     "pip>=24.2",  # used via subprocess
 # ]
 # ///
 from __future__ import annotations
@@ -28,6 +27,7 @@ import subprocess
 import sys
 import sysconfig
 import tempfile
+import textwrap
 import time
 import zipfile
 from pathlib import Path
@@ -453,35 +453,56 @@ def requirements_from_environment() -> list[Requirement]:
 
 
 def requirements_from_ext_environment(env_path: str) -> list[Requirement]:
-    # Query PIP to get the external environment packages
-    freeze = subprocess.run(
-        [
-            sys.executable,
-            "-m", "pip",
-            "--python", env_path,
-            "list",
-            "--format", "json",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    python_exe = r"Scripts\python.exe" if sys.platform == "win32" else "bin/python"
+    python_path = str(Path(env_path) / python_exe)
 
-    if freeze.returncode != 0:
-        err = (
-            f"Failed to read environment data from {env_path}\n"
-            f"pip error Message: \"{freeze.stderr.strip()}\""
+    code = textwrap.dedent("""\
+        import importlib.metadata
+        import sysconfig
+        
+        from pathlib import Path
+        
+        def get_requirements():
+            purelib = Path(sysconfig.get_paths()["purelib"])
+            venv_versions = {}
+            for dist in importlib.metadata.distributions():
+                if (
+                    isinstance(dist, importlib.metadata.PathDistribution)
+                    and (dist_path := getattr(dist, '_path', None))
+                    and isinstance(dist_path, Path)
+                    and not dist_path.is_relative_to(purelib)
+                ):
+                    continue
+                metadata = dist.metadata
+                name = metadata['Name']
+                version = metadata['Version']
+                print(f'{name}=={version}')
+        
+        get_requirements()
+    """)
+
+    try:
+        result = subprocess.run(
+            [python_path, "-"],
+            input=code,
+            capture_output=True,
+            text=True,
         )
-        raise RuntimeError(err)
+    except FileNotFoundError:
+        # The original error is incredibly long
+        raise RuntimeError(f"Could not find Python environment at {env_path}")
 
-    packages = json.loads(freeze.stdout)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Failed to read environment data from {env_path}\n"
+            f"Error from venv: {result.stderr}\n"
+        )
 
     requirements = []
-    for package in packages:
-        name = package.get("name")
-        version = package.get("version")
-        if name and version:
-            version = Version(version).base_version
-            requirements.append(Requirement(f"{name}>={version}"))
+    for line in result.stdout.split("\n"):
+        if line := line.strip():
+            name, version = line.split("==")
+            requirements.append(Requirement(f"{name}>={Version(version).base_version}"))
 
     return requirements
 

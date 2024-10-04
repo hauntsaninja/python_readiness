@@ -9,7 +9,6 @@ requires-python = ">=3.9"
 dependencies = [
     "aiohttp>=3.10",
     "packaging>=24",
-    "pip>=24.2",
 ]
 
 [project.scripts]
