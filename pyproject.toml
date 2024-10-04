@@ -24,3 +24,4 @@ build-backend = "flit_core.buildapi"
 
 [tool.mypy]
 strict = true
+python_version = "3.9"
