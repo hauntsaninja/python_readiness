@@ -1,6 +1,5 @@
 import asyncio
 import functools
-import tempfile
 import sys
 from pathlib import Path
 from typing import Any, Callable, Coroutine
@@ -21,7 +20,7 @@ from python_readiness import (
     latest_python_release,
     parse_requirements_txt,
     previous_minor_python_version,
-    requirements_from_environment,
+    requirements_from_current_environment,
     requirements_from_ext_environment,
     safe_version,
     support_from_wheel_tags_helper,
@@ -168,8 +167,8 @@ def test_deduplicate_reqs() -> None:
     assert str(deduped[0]) == "package>=3"
 
 
-def test_requirements_from_environment() -> None:
-    reqs = {canonical_name(r.name): r for r in requirements_from_environment()}
+def test_requirements_from_current_environment() -> None:
+    reqs = {canonical_name(r.name): r for r in requirements_from_current_environment()}
     assert reqs["aiohttp"]
     assert Version("3.9") not in reqs["aiohttp"].specifier
     assert Version("9999") in reqs["aiohttp"].specifier
@@ -181,14 +180,9 @@ def test_requirements_from_environment() -> None:
 
 def test_requirements_from_ext_environment() -> None:
     # Both methods should give the same result for the active venv
-    from_env = sorted(
-        requirements_from_environment(),
-        key=lambda x: str(x)
-    )
-    from_ext_env = sorted(
-        requirements_from_ext_environment(sys.prefix),
-        key=lambda x: str(x)
-    )
+    from_current_env = sorted(requirements_from_current_environment(), key=str)
+    from_ext_env = sorted(requirements_from_ext_environment(sys.prefix), key=str)
+    assert from_current_env == from_ext_env
 
     with pytest.raises(RuntimeError):
         _ = requirements_from_ext_environment(str(Path(sys.prefix) / "not_a_venv"))

@@ -27,7 +27,6 @@ import subprocess
 import sys
 import sysconfig
 import tempfile
-import textwrap
 import time
 import zipfile
 from pathlib import Path
@@ -437,14 +436,15 @@ def sysconfig_purelib() -> Path:
     return Path(sysconfig.get_paths()["purelib"])
 
 
-def requirements_from_environment() -> list[Requirement]:
+def requirements_from_current_environment() -> list[Requirement]:
+    purelib = sysconfig_purelib()
     venv_versions = {}
     for dist in importlib.metadata.distributions():
         if (
             isinstance(dist, importlib.metadata.PathDistribution)
             and (dist_path := getattr(dist, "_path", None))
             and isinstance(dist_path, pathlib.Path)
-            and not dist_path.is_relative_to(sysconfig_purelib())
+            and not dist_path.is_relative_to(purelib)
         ):
             continue
         metadata = dist.metadata
@@ -456,54 +456,45 @@ def requirements_from_ext_environment(env_path: str) -> list[Requirement]:
     python_exe = r"Scripts\python.exe" if sys.platform == "win32" else "bin/python"
     python_path = str(Path(env_path) / python_exe)
 
-    code = textwrap.dedent("""\
-        import importlib.metadata
-        import sysconfig
-        
-        from pathlib import Path
-        
-        def get_requirements():
-            purelib = Path(sysconfig.get_paths()["purelib"])
-            venv_versions = {}
-            for dist in importlib.metadata.distributions():
-                if (
-                    isinstance(dist, importlib.metadata.PathDistribution)
-                    and (dist_path := getattr(dist, '_path', None))
-                    and isinstance(dist_path, Path)
-                    and not dist_path.is_relative_to(purelib)
-                ):
-                    continue
-                metadata = dist.metadata
-                name = metadata['Name']
-                version = metadata['Version']
-                print(f'{name}=={version}')
-        
-        get_requirements()
-    """)
+    code = """
+import importlib.metadata
+import json
+import sysconfig
+
+from pathlib import Path
+
+purelib = Path(sysconfig.get_paths()["purelib"])
+venv_versions = {}
+for dist in importlib.metadata.distributions():
+    if (
+        isinstance(dist, importlib.metadata.PathDistribution)
+        and (dist_path := getattr(dist, '_path', None))
+        and isinstance(dist_path, Path)
+        and not dist_path.is_relative_to(purelib)
+    ):
+        continue
+    metadata = dist.metadata
+    venv_versions[metadata["Name"]] = metadata["Version"]
+
+print(json.dumps(venv_versions))
+"""
 
     try:
         result = subprocess.run(
-            [python_path, "-"],
-            input=code,
-            capture_output=True,
-            text=True,
+            [python_path, "-"], input=code.encode(), capture_output=True, check=False
         )
-    except FileNotFoundError:
-        raise RuntimeError(f"Could not find Python environment at {env_path}")
+    except FileNotFoundError as e:
+        raise RuntimeError(f"Could not find Python environment at {env_path}") from e
 
     if result.returncode != 0:
         raise RuntimeError(
-            f"Failed to read environment data from {env_path}\n"
-            f"Error from venv: {result.stderr}\n"
+            f"Failed to read environment data from {env_path}. Error:\n"
+            f"{result.stderr.decode()}"
         )
 
-    requirements = []
-    for line in result.stdout.split("\n"):
-        if line := line.strip():
-            name, version = line.split("==")
-            requirements.append(Requirement(f"{name}>={Version(version).base_version}"))
-
-    return requirements
+    venv_versions = json.loads(result.stdout)
+    venv_versions = {name: Version(version).base_version for name, version in venv_versions.items()}
+    return [Requirement(f"{name}>={version}") for name, version in venv_versions.items()]
 
 
 # ==============================
@@ -529,7 +520,7 @@ async def python_readiness(
 
     if not packages:
         # Default to pulling "requirements" from the current environment
-        packages = requirements_from_environment()
+        packages = requirements_from_current_environment()
     if ignore_existing_requirements:
         packages = [Requirement(r.name) for r in packages]
     packages = deduplicate_reqs(packages)
@@ -592,10 +583,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--python", default=None)
     parser.add_argument(
-        "-e", "--env",
-        action="append",
-        default=[],
-        help="Path to a virtual environment"
+        "-e", "--env", action="append", default=[], help="Path to a virtual environment"
     )
     parser.add_argument("-p", "--package", action="append", default=[])
     parser.add_argument("-r", "--requirement", action="append", default=[])
