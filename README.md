@@ -34,6 +34,11 @@ Check if a requirements file is ready for a specific Python:
 python_readiness -r requirements.txt --python 3.13
 ```
 
+See all options:
+```bash
+python_readiness --help
+```
+
 ## What are the exact definitions of readiness this uses?
 
 Take a look at the code, in particular `support_from_files`.
