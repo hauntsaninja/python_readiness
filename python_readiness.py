@@ -650,16 +650,63 @@ def main() -> None:
     assert sys.version_info >= (3, 9)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--python", default=None)
-    parser.add_argument("--monotonic-support", action="store_true")
-    parser.add_argument("--exclude-newer", default=None)
+    parser.add_argument(
+        "--python",
+        default=None,
+        help=(
+            "Python version to check support for. Specified as major.minor, e.g. 3.13. "
+            "Defaults to latest release."
+        ),
+    )
 
     parser.add_argument(
-        "-e", "--env", action="append", default=[], help="Path to a virtual environment"
+        "--monotonic-support",
+        action="store_true",
+        help=(
+            "Output requirements guarantee that *all* versions matching the specifier maintain "
+            "the same support level. This is slower, as well as stricter, than the default "
+            "behaviour that uses a modified bisection-based algorithm."
+        ),
     )
-    parser.add_argument("-p", "--package", action="append", default=[])
-    parser.add_argument("-r", "--requirement", action="append", default=[])
-    parser.add_argument("--ignore-existing-requirements", action="store_true")
+    parser.add_argument(
+        "--exclude-newer",
+        default=None,
+        help="Exclude package releases newer than this isoformat date",
+    )
+
+    parser.add_argument(
+        "-p",
+        "--package",
+        action="append",
+        default=[],
+        help="Specific packages to check Python support of (can be specified multiple times)",
+    )
+    parser.add_argument(
+        "-r",
+        "--requirement",
+        action="append",
+        default=[],
+        help=(
+            "Specific requirements.txt files to check Python support of "
+            "(can be specified multiple times)"
+        ),
+    )
+    parser.add_argument(
+        "-e",
+        "--env",
+        action="append",
+        default=[],
+        help="Specific virtual environments to check Python support of (can be specified multiple times)",
+    )
+    parser.add_argument(
+        "--ignore-existing-requirements",
+        action="store_true",
+        help=(
+            "Ignore any existing version constraints determined from the input. "
+            "Useful if you'd like to relax your current constraints"
+        ),
+    )
+
     args = parser.parse_args()
 
     python_version: tuple[int, int] | None = None
