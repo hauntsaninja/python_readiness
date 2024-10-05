@@ -67,14 +67,15 @@ class CachedSession:
     def __init__(self) -> None:
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(connect=15, total=60))
         self.cache_dir = Path(tempfile.gettempdir()) / "python_readiness_cache"
-        self.skip_cache = os.environ.get("PYTHON_READINESS_SKIP_CACHE")
+        self.skip_cache = bool(os.environ.get("PYTHON_READINESS_SKIP_CACHE", False))
+        self.cache_expiry = int(os.environ.get("PYTHON_READINESS_CACHE_EXPIRY", 3600))
 
     async def get(self, url: str, **kwargs: Any) -> CachedResponse:
         cache_file = self.cache_dir / _cache_key(url, **kwargs, cache_version=1)
         if not self.skip_cache:
             try:
                 fetch_time = json.loads((cache_file / "fetch").read_text())
-                if fetch_time > time.time() - 3600:
+                if fetch_time > time.time() - self.cache_expiry:
                     await asyncio.sleep(0)
                     status = int((cache_file / "status").read_text())
                     with gzip.open(cache_file / "body.gz", "rb") as f:
@@ -92,6 +93,7 @@ class CachedSession:
             await asyncio.sleep(0.1)
 
         cache_file.mkdir(parents=True, exist_ok=True)
+        (cache_file / "url").write_text(url)
         (cache_file / "fetch").write_text(json.dumps(time.time()))
         (cache_file / "status").write_text(str(ret.status))
         with gzip.open(cache_file / "body.gz", "wb") as f:
