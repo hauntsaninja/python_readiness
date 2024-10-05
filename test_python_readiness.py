@@ -198,12 +198,20 @@ def we_have_pytest_asyncio_at_home(
     return wrapper
 
 
+DEFAULT_EXCLUDE_NEWER = "2024-10-01"
+
+
 @we_have_pytest_asyncio_at_home
 async def test_dist_support() -> None:
     session = CachedSession()
 
     for monotonic_support in [False, True]:
-        get_support = functools.partial(dist_support, session, monotonic_support=monotonic_support)
+        get_support = functools.partial(
+            dist_support,
+            session,
+            monotonic_support=monotonic_support,
+            exclude_newer=DEFAULT_EXCLUDE_NEWER,
+        )
 
         version, support, file_proof = await get_support("mypy", (3, 11))
         assert version == Version("0.990")
@@ -282,7 +290,12 @@ async def test_dist_support_yanked() -> None:
     session = CachedSession()
 
     for monotonic_support in [False, True]:
-        get_support = functools.partial(dist_support, session, monotonic_support=monotonic_support)
+        get_support = functools.partial(
+            dist_support,
+            session,
+            monotonic_support=monotonic_support,
+            exclude_newer=DEFAULT_EXCLUDE_NEWER,
+        )
 
         version, support, file_proof = await get_support("memray", (3, 11))
         assert version == Version("1.3.0")
@@ -297,11 +310,49 @@ async def test_dist_support_yanked() -> None:
 
 
 @we_have_pytest_asyncio_at_home
+async def test_dist_support_exclude_newer() -> None:
+    session = CachedSession()
+
+    get_support = functools.partial(dist_support, session, monotonic_support=True)
+
+    version, support, file_proof = await get_support("mypy", (3, 12), exclude_newer="2024-04-25")
+    assert version == Version("1.10.0")
+    assert support == PythonSupport.has_classifier_and_explicit_wheel
+    assert file_proof is not None
+    assert file_proof["filename"] == "mypy-1.10.0-cp312-cp312-win_amd64.whl"
+
+    version, support, file_proof = await get_support("mypy", (3, 12), exclude_newer="2024-04-24")
+    assert version == Version("1.5.1")
+    assert support == PythonSupport.has_explicit_wheel
+    assert file_proof is not None
+    assert file_proof["filename"] == "mypy-1.5.1-cp312-cp312-win_amd64.whl"
+
+    version, support, file_proof = await get_support("mypy", (3, 12), exclude_newer="2023-08-17")
+    assert version == Version("1.5.1")
+    assert support == PythonSupport.has_explicit_wheel
+    assert file_proof is not None
+    assert file_proof["filename"] == "mypy-1.5.1-cp312-cp312-win_amd64.whl"
+
+    version, support, file_proof = await get_support("mypy", (3, 12), exclude_newer="2023-08-16")
+    assert version is None
+    assert support == PythonSupport.unsupported
+    assert file_proof is None
+
+    await session.close()
+
+
+@we_have_pytest_asyncio_at_home
 async def test_dist_support_large() -> None:
+    # Test cases with lots of candidates where bisection really does matter for performance
     session = CachedSession()
 
     for monotonic_support in [False, True]:
-        get_support = functools.partial(dist_support, session, monotonic_support=monotonic_support)
+        get_support = functools.partial(
+            dist_support,
+            session,
+            monotonic_support=monotonic_support,
+            exclude_newer=DEFAULT_EXCLUDE_NEWER,
+        )
 
         version, _, _ = await get_support("boto3", (3, 8))
         assert version == Version("1.13.16")
@@ -340,36 +391,39 @@ async def test_dist_support_large() -> None:
 
 @we_have_pytest_asyncio_at_home
 async def test_dist_support_bisection_differences() -> None:
+    # Test cases where bisection can identify an earlier version than linear search
     session = CachedSession()
 
-    version, _, _ = await dist_support(session, "sqlalchemy", (3, 12), monotonic_support=False)
+    get_support = functools.partial(dist_support, session, exclude_newer=DEFAULT_EXCLUDE_NEWER)
+
+    version, _, _ = await get_support("sqlalchemy", (3, 12), monotonic_support=False)
     assert version == Version("1.4.51")
-    version, _, _ = await dist_support(session, "sqlalchemy", (3, 12), monotonic_support=True)
+    version, _, _ = await get_support("sqlalchemy", (3, 12), monotonic_support=True)
     assert version == Version("2.0.24")
 
-    version, _, _ = await dist_support(session, "greenlet", (3, 11), monotonic_support=False)
+    version, _, _ = await get_support("greenlet", (3, 11), monotonic_support=False)
     assert version == Version("1.1.3")
-    version, _, _ = await dist_support(session, "greenlet", (3, 11), monotonic_support=True)
+    version, _, _ = await get_support("greenlet", (3, 11), monotonic_support=True)
     assert version == Version("2.0.0.post0")
 
-    version, _, _ = await dist_support(session, "rapidfuzz", (3, 12), monotonic_support=False)
+    version, _, _ = await get_support("rapidfuzz", (3, 12), monotonic_support=False)
     assert version == Version("2.15.2")
-    version, _, _ = await dist_support(session, "rapidfuzz", (3, 12), monotonic_support=True)
+    version, _, _ = await get_support("rapidfuzz", (3, 12), monotonic_support=True)
     assert version == Version("3.3.1")
 
-    version, _, _ = await dist_support(session, "pydantic", (3, 12), monotonic_support=False)
+    version, _, _ = await get_support("pydantic", (3, 12), monotonic_support=False)
     assert version == Version("1.10.17")
-    version, _, _ = await dist_support(session, "pydantic", (3, 12), monotonic_support=True)
+    version, _, _ = await get_support("pydantic", (3, 12), monotonic_support=True)
     assert version == Version("2.5.0")
 
-    version, _, _ = await dist_support(session, "black", (3, 11), monotonic_support=False)
+    version, _, _ = await get_support("black", (3, 11), monotonic_support=False)
     assert version == Version("22.10.0")
-    version, _, _ = await dist_support(session, "black", (3, 11), monotonic_support=True)
+    version, _, _ = await get_support("black", (3, 11), monotonic_support=True)
     assert version == Version("23.9.1")
 
-    version, _, _ = await dist_support(session, "regex", (3, 11), monotonic_support=False)
+    version, _, _ = await get_support("regex", (3, 11), monotonic_support=False)
     assert version == Version("2022.10.31")
-    version, _, _ = await dist_support(session, "regex", (3, 11), monotonic_support=True)
+    version, _, _ = await get_support("regex", (3, 11), monotonic_support=True)
     assert version == Version("2023.5.2")
 
     await session.close()
@@ -393,6 +447,7 @@ async def test_python_readiness_e2e() -> None:
             Requirement("blobfile"),
         ],
         monotonic_support=True,
+        exclude_newer=DEFAULT_EXCLUDE_NEWER,
         req_files=[],
         python_version=(3, 11),
         ignore_existing_requirements=True,
@@ -418,6 +473,7 @@ blobfile                                  # has_viable_wheel (cannot ensure supp
             Requirement("ansiconv>=0.1"),
         ],
         monotonic_support=False,
+        exclude_newer=DEFAULT_EXCLUDE_NEWER,
         req_files=[],
         python_version=(3, 11),
         ignore_existing_requirements=False,
