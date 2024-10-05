@@ -288,7 +288,10 @@ async def support_from_files(
 
 
 async def dist_support(
-    session: CachedSession, name: str, python_version: tuple[int, int]
+    session: CachedSession,
+    name: str,
+    python_version: tuple[int, int],
+    monotonic_support: bool = True,
 ) -> tuple[Version | None, PythonSupport, dict[str, Any] | None]:
     headers = {"Accept": "application/vnd.pypi.simple.v1+json"}
 
@@ -329,23 +332,72 @@ async def dist_support(
     if support <= PythonSupport.has_viable_wheel:
         return None, support, None
 
-    # Try to figure out which version added the classifier / explicit wheel
-    # Just do a dumb linear search
-    # Note that if a package backports support for newer Python versions to an older branch of
-    # development (like sqlalchemy does), we won't necessarily find the earliest supported version
-    earliest_supported_version = latest_version
-    for version in all_versions:
-        if version == latest_version:
-            continue
+    if monotonic_support:
+        # Just linearly find the earliest version that added the classifier / explicit wheel present
+        # in the latest version after which all versions maintain the same level of support
+        # The guarantee that all versions >= earliest_supported_version is stronger than we
+        # get in the bisection branch, which is both a good and a bad thing. We could exclude
+        # earlier versions that do support our Python, for instance, if support is backported to an
+        # older branch of development). Check the test cases for instances where this matters.
+        # This is also of course much slower than bisection.
+        earliest_supported_version = latest_version
+        for version in all_versions:
+            if version == latest_version:
+                continue
+            version_support, version_best_file = await support_from_files(
+                session, version_files[version], python_version
+            )
+            if version_support < support:
+                return earliest_supported_version, support, best_file
+            earliest_supported_version = version
+            best_file = version_best_file
+
+        return earliest_supported_version, support, best_file
+
+    # Otherwise, we bisect the versions
+    # Note the bisection here is a little cleverer than the naive bisection you may expect.
+    # We partition the search space with version awareness. This helps efficiency, but more
+    # importantly, our partitioning method should guarantees that we'll find the earliest version
+    # that supports our Python versions under conditions that are more complex than just lack of
+    # support followed by continuous support.
+    # For the sake of example, assume a three part version component. If (x_0, y_0, z_0) is the
+    # earliest supported version, we'll find it so long as:
+    # - For all n>=0, there exists y', z' s.t. all (x_0+n, y>=y', z>=z') supports it
+    # - For all n>=0, there exists z' s.t. all (x_0, y_0', z>=z') supports it
+    left = 0
+    right = len(all_versions)
+    while left < right:
+        left_release = all_versions[left].release
+        right_release = all_versions[right - 1].release
+        left_release = left_release + (0,) * (len(right_release) - len(left_release))
+        right_release = right_release + (0,) * (len(left_release) - len(right_release))
+        # Say left_release = (2, 8, 4) and right_release = (2, 1, 1)
+        # We'll want to test the largest version < (2, 5, 0)
+        if left_release != right_release:
+            shared_prefix_len = next(
+                i for i, (a, b) in enumerate(zip(left_release, right_release)) if a != b
+            )
+            mid_release = left_release[:shared_prefix_len] + (
+                (left_release[shared_prefix_len] + right_release[shared_prefix_len] + 1) // 2,
+            )
+            assert left_release >= mid_release >= right_release
+            mid = left + next(
+                i for i, v in enumerate(all_versions[left:right]) if v.release < mid_release
+            )
+        else:
+            mid = (left + right) // 2
+        assert left <= mid < right
+
         version_support, version_best_file = await support_from_files(
-            session, version_files[version], python_version
+            session, version_files[all_versions[mid]], python_version
         )
         if version_support < support:
-            return earliest_supported_version, support, best_file
-        earliest_supported_version = version
-        best_file = version_best_file
+            right = mid
+        else:
+            left = mid + 1
+            best_file = version_best_file
 
-    return earliest_supported_version, support, best_file
+    return all_versions[right - 1], support, best_file
 
 
 # ==============================
