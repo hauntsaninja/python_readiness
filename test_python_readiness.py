@@ -20,12 +20,12 @@ from python_readiness import (
     latest_python_release,
     parse_requirements_txt,
     previous_minor_python_version,
+    python_readiness,
     requirements_from_current_environment,
     requirements_from_ext_environment,
     safe_version,
     support_from_wheel_tags_helper,
     tag_viable_for_python,
-    python_readiness,
 )
 
 
@@ -281,6 +281,33 @@ async def test_dist_support() -> None:
         assert support == PythonSupport.has_classifier_and_explicit_wheel
         assert file_proof is not None
         assert file_proof["filename"] == "psygnal-0.6.0.post0-cp311-cp311-win_amd64.whl"
+
+    await session.close()
+
+
+@we_have_pytest_asyncio_at_home
+async def test_dist_support_requires_python() -> None:
+    session = CachedSession()
+
+    get_support = functools.partial(
+        dist_support, session, monotonic_support=False, exclude_newer=DEFAULT_EXCLUDE_NEWER
+    )
+
+    version, support, file_proof = await get_support("k8", (3, 11))
+    assert version == Version("29.0.0")
+    assert support == PythonSupport.is_requires_python_lower_bound
+    assert file_proof is not None
+    assert file_proof["filename"] == "k8-29.0.0-py3-none-any.whl"
+
+    version, support, file_proof = await get_support("aiopath", (3, 11))
+    assert version is None
+    assert support == PythonSupport.unsupported
+    assert file_proof is None
+
+    version, support, file_proof = await get_support("aiopath", (3, 11), exclude_newer="2023-01")
+    assert version is None
+    assert support == PythonSupport.has_viable_wheel
+    assert file_proof is None
 
     await session.close()
 
