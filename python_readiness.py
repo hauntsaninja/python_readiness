@@ -291,7 +291,7 @@ async def dist_support(
     session: CachedSession,
     name: str,
     python_version: tuple[int, int],
-    monotonic_support: bool = True,
+    monotonic_support: bool,
 ) -> tuple[Version | None, PythonSupport, dict[str, Any] | None]:
     headers = {"Accept": "application/vnd.pypi.simple.v1+json"}
 
@@ -543,8 +543,7 @@ print(json.dumps(venv_versions))
 
     if result.returncode != 0:
         raise RuntimeError(
-            f"Failed to read environment data from {env_path}. Error:\n"
-            f"{result.stderr.decode()}"
+            f"Failed to read environment data from {env_path}. Error:\n" f"{result.stderr.decode()}"
         )
 
     venv_versions = json.loads(result.stdout)
@@ -561,17 +560,17 @@ async def python_readiness(
     packages: list[Requirement],
     *,
     python_version: tuple[int, int] | None,
+    monotonic_support: bool,
     req_files: list[str],
     ignore_existing_requirements: bool,
-    envs: list[str] | None = None,
+    envs: list[str],
 ) -> str:
 
     for req_file in req_files:
         packages.extend(Requirement(req) for req in parse_requirements_txt(req_file))
 
-    if envs:
-        for env in envs:
-            packages.extend(requirements_from_ext_environment(env))
+    for env in envs:
+        packages.extend(requirements_from_ext_environment(env))
 
     if not packages:
         # Default to pulling "requirements" from the current environment
@@ -586,7 +585,12 @@ async def python_readiness(
         python_version = await latest_python_release(session)
     assert len(python_version) == 2
 
-    tasks = [asyncio.create_task(dist_support(session, p.name, python_version)) for p in packages]
+    tasks = [
+        asyncio.create_task(
+            dist_support(session, p.name, python_version, monotonic_support=monotonic_support)
+        )
+        for p in packages
+    ]
     pending = set(tasks)
     while pending:
         _done, pending = await asyncio.wait(pending, timeout=1)
@@ -637,6 +641,8 @@ def main() -> None:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--python", default=None)
+    parser.add_argument("--monotonic-support", action="store_true")
+
     parser.add_argument(
         "-e", "--env", action="append", default=[], help="Path to a virtual environment"
     )
@@ -660,6 +666,7 @@ def main() -> None:
         python_readiness(
             [Requirement(p) for p in args.package],
             python_version=python_version,
+            monotonic_support=args.monotonic_support,
             req_files=args.requirement,
             ignore_existing_requirements=args.ignore_existing_requirements,
             envs=args.env,
