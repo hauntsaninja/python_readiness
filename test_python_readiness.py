@@ -203,9 +203,7 @@ async def test_dist_support() -> None:
     session = CachedSession()
 
     for monotonic_support in [False, True]:
-        get_support = functools.partial(
-            dist_support, session, monotonic_support=monotonic_support
-        )
+        get_support = functools.partial(dist_support, session, monotonic_support=monotonic_support)
 
         version, support, file_proof = await get_support("mypy", (3, 11))
         assert version == Version("0.990")
@@ -284,9 +282,7 @@ async def test_dist_support_yanked() -> None:
     session = CachedSession()
 
     for monotonic_support in [False, True]:
-        get_support = functools.partial(
-            dist_support, session, monotonic_support=monotonic_support
-        )
+        get_support = functools.partial(dist_support, session, monotonic_support=monotonic_support)
 
         version, support, file_proof = await get_support("memray", (3, 11))
         assert version == Version("1.3.0")
@@ -305,9 +301,7 @@ async def test_dist_support_large() -> None:
     session = CachedSession()
 
     for monotonic_support in [False, True]:
-        get_support = functools.partial(
-            dist_support, session, monotonic_support=monotonic_support
-        )
+        get_support = functools.partial(dist_support, session, monotonic_support=monotonic_support)
 
         version, _, _ = await get_support("boto3", (3, 8))
         assert version == Version("1.13.16")
@@ -392,19 +386,23 @@ async def test_latest_python_release() -> None:
 async def test_python_readiness_e2e() -> None:
     readiness = await python_readiness(
         packages=[
+            Requirement("aiohttp"),
+            Requirement("black>=23"),
             Requirement("mypy>=1"),
             Requirement("typing-extensions>=4"),
-            Requirement("aiohttp"),
             Requirement("blobfile"),
         ],
+        monotonic_support=True,
         req_files=[],
         python_version=(3, 11),
         ignore_existing_requirements=True,
+        envs=[],
     )
     assert (
         readiness
         == """\
 aiohttp>=3.9.4                            # has_classifier_and_explicit_wheel
+black>=23.9.1                             # has_classifier_and_explicit_wheel
 mypy>=0.990                               # has_classifier_and_explicit_wheel
 typing-extensions>=4.5.0                  # has_classifier
 blobfile                                  # has_viable_wheel (cannot ensure support)"""
@@ -412,21 +410,25 @@ blobfile                                  # has_viable_wheel (cannot ensure supp
 
     readiness = await python_readiness(
         packages=[
+            Requirement("aiohttp"),
+            Requirement("black>=23"),
             Requirement("mypy>=1"),
             Requirement("typing-extensions>=4"),
-            Requirement("aiohttp"),
             Requirement("blobfile>=0.1"),
             Requirement("ansiconv>=0.1"),
         ],
+        monotonic_support=False,
         req_files=[],
         python_version=(3, 11),
         ignore_existing_requirements=False,
+        envs=[],
     )
     print(readiness)
     assert (
         readiness
         == """\
 aiohttp>=3.9.4                            # has_classifier_and_explicit_wheel
+black>=23                                 # has_classifier_and_explicit_wheel (existing requirement ensures support)
 mypy>=1                                   # has_classifier_and_explicit_wheel (existing requirement ensures support)
 typing-extensions>=4.5.0                  # has_classifier (previously: typing-extensions>=4)
 blobfile>=0.1                             # has_viable_wheel (cannot ensure support)
