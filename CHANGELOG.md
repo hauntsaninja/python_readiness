@@ -3,7 +3,7 @@
 ## [v1.1]
 
 - Use bisection by default. This finds earlier supporting versions, but means there may also be
-  versions satisfying the requirement but without relevant support. You can use
+  intermediate versions satisfying the requirement without relevant support. You can use
   `--monotonic-support` to regain that guarantee, if useful, using the old linear search.
   Bisection is also significantly faster.
 - Improve logic for handling yanked versions
