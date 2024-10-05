@@ -496,8 +496,10 @@ def sysconfig_purelib() -> Path:
 
 def requirements_from_current_environment() -> list[Requirement]:
     purelib = sysconfig_purelib()
+    safe_path = sys.path if getattr(sys.flags, "safe_path", False) else sys.path[1:]
+    context = importlib.metadata.DistributionFinder.Context(path=safe_path)
     venv_versions = {}
-    for dist in importlib.metadata.distributions():
+    for dist in importlib.metadata.distributions(context=context):
         if (
             isinstance(dist, importlib.metadata.PathDistribution)
             and (dist_path := getattr(dist, "_path", None))
@@ -517,13 +519,16 @@ def requirements_from_ext_environment(env_path: str) -> list[Requirement]:
     code = """
 import importlib.metadata
 import json
+import sys
 import sysconfig
 
 from pathlib import Path
 
 purelib = Path(sysconfig.get_paths()["purelib"])
+safe_path = sys.path if getattr(sys.flags, "safe_path", False) else sys.path[1:]
+context = importlib.metadata.DistributionFinder.Context(path=safe_path)
 venv_versions = {}
-for dist in importlib.metadata.distributions():
+for dist in importlib.metadata.distributions(context=context):
     if (
         isinstance(dist, importlib.metadata.PathDistribution)
         and (dist_path := getattr(dist, '_path', None))
