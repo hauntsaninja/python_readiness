@@ -33,11 +33,11 @@ from pathlib import Path
 from typing import Any
 
 import aiohttp
+import packaging.specifiers
 import packaging.tags
 import packaging.utils
 import packaging.version
 from packaging.requirements import Requirement
-from packaging.specifiers import Specifier
 from packaging.version import Version
 
 # ==============================
@@ -164,11 +164,13 @@ def tag_viable_for_python(tag: packaging.tags.Tag, python_version: tuple[int, in
 
 class PythonSupport(enum.IntEnum):
     unsupported = 0
-    totally_unknown = 1
-    has_viable_wheel = 2
-    has_explicit_wheel = 3
-    has_classifier = 4
-    has_classifier_and_explicit_wheel = 5
+    totally_unknown = 10
+    has_viable_wheel = 20
+    EXPLICIT_INDICATION = 25
+    is_requires_python_lower_bound = 30
+    has_explicit_wheel = 40
+    has_classifier = 50
+    has_classifier_and_explicit_wheel = 60
 
 
 async def metadata_from_wheel(
@@ -266,8 +268,20 @@ async def support_from_files(
     assert best_wheel is not None
     metadata = await metadata_from_wheel(session, best_wheel)
 
-    classifiers = set(metadata.get_all("Classifier", []))
     python_version_str = ".".join(str(v) for v in python_version)
+    requires_python = metadata.get("Requires-Python")
+    requires_python_spec = None
+    try:
+        if requires_python:
+            requires_python_spec = packaging.specifiers.SpecifierSet(requires_python)
+    except packaging.specifiers.InvalidSpecifier:
+        pass
+
+    if requires_python_spec is not None and python_version_str not in requires_python_spec:
+        # We fail to meet the Requires-Python specifier
+        return PythonSupport.unsupported, None
+
+    classifiers = set(metadata.get_all("Classifier", []))
     if f"Programming Language :: Python :: {python_version_str}" in classifiers:
         # It's worth distinguishing these two cases, because it's often much more urgent to
         # upgrade dependencies that have an explicit wheel. For pure Python packages that just
@@ -286,6 +300,16 @@ async def support_from_files(
 
     if unsupported_without_classifier:
         return PythonSupport.unsupported, None
+
+    if support == PythonSupport.has_viable_wheel:
+        # If we're explicitly mentioned in Requires-Python, we're supported
+        if requires_python_spec is not None:
+            if any(
+                spec.operator == ">=" and spec.version == python_version_str
+                for spec in requires_python_spec
+            ):
+                return PythonSupport.is_requires_python_lower_bound, best_wheel
+
     return support, best_wheel
 
 
@@ -334,7 +358,9 @@ async def dist_support(
     support, best_file = await support_from_files(
         session, version_files[latest_version], python_version
     )
-    if support <= PythonSupport.has_viable_wheel:
+    if support < PythonSupport.EXPLICIT_INDICATION:
+        # One thing to note is we'll also return here if "unsupported". In the future, we could
+        # determine if a newer version of Python has support and then backtrack.
         return None, support, None
 
     if monotonic_support:
@@ -437,7 +463,7 @@ def parse_requirements_txt(req_file: str) -> list[str]:
 
 
 def approx_min_satisfying_version(r: Requirement) -> Version:
-    def inner(spec: Specifier) -> Version:
+    def inner(spec: packaging.specifiers.Specifier) -> Version:
         if spec.operator == "==":
             return Version(spec.version.removesuffix(".*"))
         if spec.operator == "~=":
@@ -622,8 +648,8 @@ async def python_readiness(
     for previous_req, (version, support, file_proof) in sorted(
         package_support.items(), key=lambda x: (-x[1][1].value, x[0].name)
     ):
-        assert (version is None) == (support <= PythonSupport.has_viable_wheel)
-        assert (file_proof is None) == (support <= PythonSupport.has_viable_wheel)
+        assert (version is None) == (support < PythonSupport.EXPLICIT_INDICATION)
+        assert (file_proof is None) == (support < PythonSupport.EXPLICIT_INDICATION)
         # file_proof["upload-time"] is interesting data
 
         package = previous_req.name
@@ -635,7 +661,7 @@ async def python_readiness(
         PAD = 40
         previous_req_min = approx_min_satisfying_version(previous_req)
         if previous_req_min in new_req.specifier:
-            if support > PythonSupport.has_viable_wheel:
+            if support > PythonSupport.EXPLICIT_INDICATION:
                 out.append(
                     f"{str(previous_req):<{PAD}}  # {support.name} (existing requirement ensures support)"
                 )
