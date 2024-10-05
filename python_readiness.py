@@ -291,7 +291,7 @@ async def dist_support(
     session: CachedSession,
     name: str,
     python_version: tuple[int, int],
-    ensure_monotonic_support: bool = True,
+    monotonic_support: bool = True,
 ) -> tuple[Version | None, PythonSupport, dict[str, Any] | None]:
     headers = {"Accept": "application/vnd.pypi.simple.v1+json"}
 
@@ -332,7 +332,7 @@ async def dist_support(
     if support <= PythonSupport.has_viable_wheel:
         return None, support, None
 
-    if ensure_monotonic_support:
+    if monotonic_support:
         # Just linearly find the earliest version that added the classifier / explicit wheel present
         # in the latest version after which all versions maintain the same level of support
         # The guarantee that all versions >= earliest_supported_version is stronger than we

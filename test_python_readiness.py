@@ -202,9 +202,9 @@ def we_have_pytest_asyncio_at_home(
 async def test_dist_support() -> None:
     session = CachedSession()
 
-    for ensure_monotonic_support in [False, True]:
+    for monotonic_support in [False, True]:
         get_support = functools.partial(
-            dist_support, session, ensure_monotonic_support=ensure_monotonic_support
+            dist_support, session, monotonic_support=monotonic_support
         )
 
         version, support, file_proof = await get_support("mypy", (3, 11))
@@ -283,9 +283,9 @@ async def test_dist_support() -> None:
 async def test_dist_support_yanked() -> None:
     session = CachedSession()
 
-    for ensure_monotonic_support in [False, True]:
+    for monotonic_support in [False, True]:
         get_support = functools.partial(
-            dist_support, session, ensure_monotonic_support=ensure_monotonic_support
+            dist_support, session, monotonic_support=monotonic_support
         )
 
         version, support, file_proof = await get_support("memray", (3, 11))
@@ -304,9 +304,9 @@ async def test_dist_support_yanked() -> None:
 async def test_dist_support_large() -> None:
     session = CachedSession()
 
-    for ensure_monotonic_support in [False, True]:
+    for monotonic_support in [False, True]:
         get_support = functools.partial(
-            dist_support, session, ensure_monotonic_support=ensure_monotonic_support
+            dist_support, session, monotonic_support=monotonic_support
         )
 
         version, _, _ = await get_support("boto3", (3, 8))
@@ -340,6 +340,45 @@ async def test_dist_support_large() -> None:
         assert version == Version("4.44.3")
         version, _, _ = await get_support("hypothesis", (3, 12))
         assert version == Version("6.91.0")
+
+    await session.close()
+
+
+@we_have_pytest_asyncio_at_home
+async def test_dist_support_bisection_differences() -> None:
+    session = CachedSession()
+
+    version, _, _ = await dist_support(session, "sqlalchemy", (3, 12), monotonic_support=False)
+    assert version == Version("1.4.51")
+    version, _, _ = await dist_support(session, "sqlalchemy", (3, 12), monotonic_support=True)
+    assert version == Version("2.0.24")
+
+    version, _, _ = await dist_support(session, "greenlet", (3, 11), monotonic_support=False)
+    assert version == Version("1.1.3")
+    version, _, _ = await dist_support(session, "greenlet", (3, 11), monotonic_support=True)
+    assert version == Version("2.0.0.post0")
+
+    version, _, _ = await dist_support(session, "rapidfuzz", (3, 12), monotonic_support=False)
+    assert version == Version("2.15.2")
+    version, _, _ = await dist_support(session, "rapidfuzz", (3, 12), monotonic_support=True)
+    assert version == Version("3.3.1")
+
+    version, _, _ = await dist_support(session, "pydantic", (3, 12), monotonic_support=False)
+    assert version == Version("1.10.17")
+    version, _, _ = await dist_support(session, "pydantic", (3, 12), monotonic_support=True)
+    assert version == Version("2.5.0")
+
+    version, _, _ = await dist_support(session, "black", (3, 11), monotonic_support=False)
+    assert version == Version("22.10.0")
+    version, _, _ = await dist_support(session, "black", (3, 11), monotonic_support=True)
+    assert version == Version("23.9.1")
+
+    version, _, _ = await dist_support(session, "regex", (3, 11), monotonic_support=False)
+    assert version == Version("2022.10.31")
+    version, _, _ = await dist_support(session, "regex", (3, 11), monotonic_support=True)
+    assert version == Version("2023.5.2")
+
+    await session.close()
 
 
 @we_have_pytest_asyncio_at_home
