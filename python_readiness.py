@@ -292,6 +292,7 @@ async def dist_support(
     name: str,
     python_version: tuple[int, int],
     monotonic_support: bool,
+    exclude_newer: str | None,
 ) -> tuple[Version | None, PythonSupport, dict[str, Any] | None]:
     headers = {"Accept": "application/vnd.pypi.simple.v1+json"}
 
@@ -304,6 +305,8 @@ async def dist_support(
     version_files = collections.defaultdict[Version, list[dict[str, Any]]](list)
     for file in data["files"]:
         if file.get("yanked"):
+            continue
+        if exclude_newer and file["upload-time"] > exclude_newer:
             continue
         if file["filename"].endswith(".whl"):
             _, version, _, _ = packaging.utils.parse_wheel_filename(file["filename"])
@@ -319,8 +322,8 @@ async def dist_support(
         version_files[version].append(file)
 
     all_versions = sorted((safe_version(v) for v in data["versions"]), reverse=True)
-    # Note we check version_files[v] to filter out yanked releases (that would otherwise be treated
-    # as totally unknown)
+    # Note we check version_files[v] to filter out yanked releases or releases with newer than
+    # exclude_newer files (otherwise these would be treated as "totally_unknown")
     all_versions = [v for v in all_versions if not v.is_prerelease and version_files[v]]
     if not all_versions:
         return None, PythonSupport.totally_unknown, None
@@ -543,7 +546,7 @@ print(json.dumps(venv_versions))
 
     if result.returncode != 0:
         raise RuntimeError(
-            f"Failed to read environment data from {env_path}. Error:\n" f"{result.stderr.decode()}"
+            f"Failed to read environment data from {env_path}. Error:\n{result.stderr.decode()}"
         )
 
     venv_versions = json.loads(result.stdout)
@@ -561,6 +564,7 @@ async def python_readiness(
     *,
     python_version: tuple[int, int] | None,
     monotonic_support: bool,
+    exclude_newer: str | None,
     req_files: list[str],
     ignore_existing_requirements: bool,
     envs: list[str],
@@ -587,7 +591,13 @@ async def python_readiness(
 
     tasks = [
         asyncio.create_task(
-            dist_support(session, p.name, python_version, monotonic_support=monotonic_support)
+            dist_support(
+                session,
+                p.name,
+                python_version,
+                monotonic_support=monotonic_support,
+                exclude_newer=exclude_newer,
+            )
         )
         for p in packages
     ]
@@ -642,6 +652,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--python", default=None)
     parser.add_argument("--monotonic-support", action="store_true")
+    parser.add_argument("--exclude-newer", default=None)
 
     parser.add_argument(
         "-e", "--env", action="append", default=[], help="Path to a virtual environment"
@@ -666,6 +677,7 @@ def main() -> None:
         python_readiness(
             [Requirement(p) for p in args.package],
             python_version=python_version,
+            exclude_newer=args.exclude_newer,
             monotonic_support=args.monotonic_support,
             req_files=args.requirement,
             ignore_existing_requirements=args.ignore_existing_requirements,
