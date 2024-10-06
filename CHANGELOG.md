@@ -1,6 +1,6 @@
 # Changelog
 
-## [v1.1]
+## [v2.0]
 
 - Use bisection by default. This finds earlier supporting versions, but means there may also be
   intermediate versions satisfying the requirement without relevant support. You can use
