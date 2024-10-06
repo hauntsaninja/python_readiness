@@ -1,6 +1,6 @@
 [project]
 name = "python_readiness"
-version = "1.0"
+version = "2.0"
 authors = [{name = "Shantanu Jain"}, {email = "hauntsaninja@gmail.com"}]
 description = "Are your dependencies ready for new Python?"
 readme = "README.md"
