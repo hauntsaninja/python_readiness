@@ -68,7 +68,7 @@ class CachedSession:
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(connect=15, total=60))
         self.cache_dir = Path(tempfile.gettempdir()) / "python_readiness_cache"
         self.skip_cache = bool(os.environ.get("PYTHON_READINESS_SKIP_CACHE", False))
-        self.cache_expiry = int(os.environ.get("PYTHON_READINESS_CACHE_EXPIRY", 3600))
+        self.cache_expiry = int(os.environ.get("PYTHON_READINESS_CACHE_EXPIRY", 7200))
 
     async def get(self, url: str, **kwargs: Any) -> CachedResponse:
         cache_file = self.cache_dir / _cache_key(url, **kwargs, cache_version=1)
@@ -293,7 +293,8 @@ async def support_from_files(
             # Interestingly, it's possible for unsupported_without_classifier to be True here
             # charset_normalizer has a release where they only have pure Python wheels for 3.12
             # but they do have the classifier. We just trust the upstream.
-            # If a later release ships an explicit wheel, that will mark a higher level of support.
+            # If a later release ships an explicit wheel in addition to the classifier, that will
+            # mark a higher level of support.
             return PythonSupport.has_classifier, best_wheel
         else:
             raise AssertionError
@@ -388,7 +389,7 @@ async def dist_support(
     # Otherwise, we bisect the versions
     # Note the bisection here is a little cleverer than the naive bisection you may expect.
     # We partition the search space with version awareness. This helps efficiency, but more
-    # importantly, our partitioning method should guarantees that we'll find the earliest version
+    # importantly, our partitioning method should guarantee that we'll find the earliest version
     # that supports our Python versions under conditions that are more complex than just lack of
     # support followed by continuous support.
     # For the sake of example, assume a three part version component. If (x_0, y_0, z_0) is the
@@ -398,22 +399,28 @@ async def dist_support(
     left = 0
     right = len(all_versions)
     while left < right:
-        left_release = all_versions[left].release
-        right_release = all_versions[right - 1].release
-        left_release = left_release + (0,) * (len(right_release) - len(left_release))
-        right_release = right_release + (0,) * (len(left_release) - len(right_release))
-        # Say left_release = (2, 8, 4) and right_release = (2, 1, 1)
-        # We'll want to test the largest version < (2, 5, 0)
-        if left_release != right_release:
+        left_ver = all_versions[left].release
+        right_inc_ver = all_versions[right - 1].release  # inclusive, unlike right
+        left_ver = left_ver + (0,) * (len(right_inc_ver) - len(left_ver))
+        right_inc_ver = right_inc_ver + (0,) * (len(left_ver) - len(right_inc_ver))
+
+        # Say left_ver = (2, 8, 4) and right_inc_ver = (2, 1, 1)
+        # We'll want to test the largest version strictly less than (2, 5, 0)
+        if left_ver != right_inc_ver:
             shared_prefix_len = next(
-                i for i, (a, b) in enumerate(zip(left_release, right_release)) if a != b
+                i for i, (a, b) in enumerate(zip(left_ver, right_inc_ver)) if a != b
             )
-            mid_release = left_release[:shared_prefix_len] + (
-                (left_release[shared_prefix_len] + right_release[shared_prefix_len] + 1) // 2,
+            mid_ver = left_ver[:shared_prefix_len]
+            mid_ver += (
+                (left_ver[shared_prefix_len] + right_inc_ver[shared_prefix_len] + 1) // 2,
             )
-            assert left_release >= mid_release >= right_release
+            assert left_ver >= mid_ver >= right_inc_ver
+            assert len(mid_ver) == shared_prefix_len + 1  # important for our guarantee
+
+            # Note that mid_ver may not correspond to an actual released package version, now
+            # we find the actual version that is strictly less than mid_ver
             mid = left + next(
-                i for i, v in enumerate(all_versions[left:right]) if v.release < mid_release
+                i for i, v in enumerate(all_versions[left:right]) if v.release < mid_ver
             )
         else:
             mid = (left + right) // 2
