@@ -7,7 +7,7 @@
   `--monotonic-support` to regain that guarantee, if useful, using the old linear search.
   Bisection is also significantly faster.
 - Improve logic for handling yanked versions
-- Use `requires-python` metadata to help determine support
+- Use `Requires-Python` metadata to help determine support
 - Add `--env` option to check a specific environment
 - Show intermediate progress every 1 second
 - Compress and version the cache, improve cache resiliency
