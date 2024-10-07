@@ -453,6 +453,21 @@ async def test_dist_support_bisection_differences() -> None:
     version, _, _ = await get_support("regex", (3, 11), monotonic_support=True)
     assert version == Version("2023.5.2")
 
+    version, _, _ = await get_support("coverage", (3, 11), monotonic_support=False)
+    assert version == Version("6.1.2")
+    version, _, _ = await get_support("coverage", (3, 11), monotonic_support=True)
+    assert version == Version("6.4.4")
+
+    version, _, _ = await get_support("aiofile", (3, 10), monotonic_support=False)
+    assert version == Version("3.7.4")
+    version, _, _ = await get_support("aiofile", (3, 10), monotonic_support=True)
+    assert version == Version("3.8.3")
+
+    version, _, _ = await get_support("pytest", (3, 9), monotonic_support=False)
+    assert version == Version("4.6.10")
+    version, _, _ = await get_support("pytest", (3, 9), monotonic_support=True)
+    assert version == Version("5.4.2")
+
     await session.close()
 
 
