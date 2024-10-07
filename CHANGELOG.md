@@ -1,5 +1,11 @@
 # Changelog
 
+## [v2.1]
+
+- Allow `--env` to resolve environment from a Python executable
+- If we've printed partial progress, make sure to print complete progress to avoid confusion
+- Print messages when determining default Python version or environment
+
 ## [v2.0]
 
 - Use bisection by default. This finds earlier supporting versions, but means there may also be
