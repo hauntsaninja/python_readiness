@@ -548,8 +548,13 @@ def requirements_from_current_environment() -> list[Requirement]:
 
 
 def requirements_from_ext_environment(env_path: str) -> list[Requirement]:
-    python_exe = r"Scripts\python.exe" if sys.platform == "win32" else "bin/python"
-    python_path = str(Path(env_path) / python_exe)
+    if os.path.basename(env_path) in {"python", "python.exe"}:
+        python_exe = env_path
+    else:
+        if sys.platform == "win32":
+            python_exe = os.path.join(env_path, "Scripts", "python.exe")
+        else:
+            python_exe = os.path.join(env_path, "bin", "python")
 
     code = """
 import importlib.metadata
@@ -579,7 +584,7 @@ print(json.dumps(venv_versions))
 
     try:
         result = subprocess.run(
-            [python_path, "-"], input=code.encode(), capture_output=True, check=False
+            [python_exe, "-"], input=code.encode(), capture_output=True, check=False
         )
     except FileNotFoundError as e:
         raise RuntimeError(f"Could not find Python environment at {env_path}") from e
