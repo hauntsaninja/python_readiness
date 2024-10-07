@@ -411,9 +411,7 @@ async def dist_support(
                 i for i, (a, b) in enumerate(zip(left_ver, right_inc_ver)) if a != b
             )
             mid_ver = left_ver[:shared_prefix_len]
-            mid_ver += (
-                (left_ver[shared_prefix_len] + right_inc_ver[shared_prefix_len] + 1) // 2,
-            )
+            mid_ver += ((left_ver[shared_prefix_len] + right_inc_ver[shared_prefix_len] + 1) // 2,)
             assert left_ver >= mid_ver >= right_inc_ver
             assert len(mid_ver) == shared_prefix_len + 1  # important for our guarantee
 
@@ -622,8 +620,13 @@ async def python_readiness(
         packages.extend(requirements_from_ext_environment(env))
 
     if not packages:
-        # Default to pulling "requirements" from the current environment
+        print(
+            f"No packages/requirements/environments specified, "
+            f"checking environment {sys.prefix}...",
+            file=sys.stderr,
+        )
         packages = requirements_from_current_environment()
+
     if ignore_existing_requirements:
         packages = [Requirement(r.name) for r in packages]
     packages = deduplicate_reqs(packages)
@@ -632,6 +635,8 @@ async def python_readiness(
 
     if python_version is None:
         python_version = await latest_python_release(session)
+        python_version_str = ".".join(str(v) for v in python_version)
+        print(f"Checking support for Python {python_version_str}...", file=sys.stderr)
     assert len(python_version) == 2
 
     tasks = [
@@ -646,14 +651,17 @@ async def python_readiness(
         )
         for p in packages
     ]
+
+    printed = False
     pending = set(tasks)
     while pending:
         _done, pending = await asyncio.wait(pending, timeout=1)
-        if pending:
+        if pending or printed:
             print(
                 f"Determined support for {len(tasks) - len(pending)}/{len(tasks)} packages...",
                 file=sys.stderr,
             )
+            printed = True
 
     out = []
     package_support = {p: await t for p, t in zip(packages, tasks)}
