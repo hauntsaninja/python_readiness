@@ -617,7 +617,7 @@ async def python_readiness(
     if not packages:
         print(
             f"No packages/requirements/environments specified, "
-            f"defaulting to environment {sys.prefix}",
+            f"checking environment {sys.prefix}...",
             file=sys.stderr,
         )
         packages = requirements_from_current_environment()
@@ -630,6 +630,8 @@ async def python_readiness(
 
     if python_version is None:
         python_version = await latest_python_release(session)
+        python_version_str = ".".join(str(v) for v in python_version)
+        print(f"Checking support for Python {python_version_str}...", file=sys.stderr)
     assert len(python_version) == 2
 
     tasks = [
