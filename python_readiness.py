@@ -336,7 +336,10 @@ async def dist_support(
         if exclude_newer and file["upload-time"] > exclude_newer:
             continue
         if file["filename"].endswith(".whl"):
-            _, version, _, _ = packaging.utils.parse_wheel_filename(file["filename"])
+            try:
+                _, version, _, _ = packaging.utils.parse_wheel_filename(file["filename"])
+            except packaging.utils.InvalidWheelFilename:
+                continue
         elif file["filename"].endswith(("tar.gz", ".zip")):
             try:
                 _, version = packaging.utils.parse_sdist_filename(file["filename"])
