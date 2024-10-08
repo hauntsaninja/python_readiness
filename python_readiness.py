@@ -65,17 +65,17 @@ class CachedResponse:
 
 class CachedSession:
     def __init__(self) -> None:
-        self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(connect=15, total=60))
+        self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(connect=30, total=60))
         self.cache_dir = Path(tempfile.gettempdir()) / "python_readiness_cache"
         self.skip_cache = bool(os.environ.get("PYTHON_READINESS_SKIP_CACHE", False))
-        self.cache_expiry = int(os.environ.get("PYTHON_READINESS_CACHE_EXPIRY", 7200))
 
     async def get(self, url: str, **kwargs: Any) -> CachedResponse:
-        cache_file = self.cache_dir / _cache_key(url, **kwargs, cache_version=1)
+        request_t = time.time()
+        cache_file = self.cache_dir / _cache_key(url, **kwargs, cache_version=2)
         if not self.skip_cache:
             try:
-                fetch_time = json.loads((cache_file / "fetch").read_text())
-                if fetch_time > time.time() - self.cache_expiry:
+                expiration_time = json.loads((cache_file / "expiration").read_text())
+                if request_t < expiration_time:
                     await asyncio.sleep(0)
                     status = int((cache_file / "status").read_text())
                     with gzip.open(cache_file / "body.gz", "rb") as f:
@@ -89,15 +89,34 @@ class CachedSession:
             async with self.session.get(url, **kwargs) as resp:
                 if i == retries - 1 or not (500 <= resp.status < 600):
                     ret = CachedResponse(body=await resp.read(), status=resp.status)
+                    response_t = time.time()
                     break
             await asyncio.sleep(0.1)
 
-        cache_file.mkdir(parents=True, exist_ok=True)
-        (cache_file / "url").write_text(url)
-        (cache_file / "fetch").write_text(json.dumps(time.time()))
-        (cache_file / "status").write_text(str(ret.status))
-        with gzip.open(cache_file / "body.gz", "wb") as f:
-            f.write(ret.body)
+        cache_control = resp.headers.get("Cache-Control", "").lower()
+        # Note we don't use the full spec:
+        # https://httpwg.org/specs/rfc9111.html#calculating.freshness.lifetime
+        freshness_lifetime = 0
+        if max_age_match := re.search(r"max-age=(\d+)", cache_control):
+            freshness_lifetime = max(0, int(max_age_match.group(1)))
+
+        expiration_time = 0
+        if freshness_lifetime >= 0:
+            # https://httpwg.org/specs/rfc9111.html#rfc.section.4.2.3
+            try:
+                age = int(resp.headers.get("Age", "0"))
+            except ValueError:
+                age = 0
+            corrected_age_value = age + (response_t - request_t) + 1
+            expiration_time = response_t + freshness_lifetime - corrected_age_value
+
+        if expiration_time > response_t + 1:
+            cache_file.mkdir(parents=True, exist_ok=True)
+            (cache_file / "url").write_text(url)
+            (cache_file / "expiration").write_text(str(expiration_time))
+            (cache_file / "status").write_text(str(ret.status))
+            with gzip.open(cache_file / "body.gz", "wb") as f:
+                f.write(ret.body)
         return ret
 
     async def close(self) -> None:
@@ -336,7 +355,10 @@ async def dist_support(
         if exclude_newer and file["upload-time"] > exclude_newer:
             continue
         if file["filename"].endswith(".whl"):
-            _, version, _, _ = packaging.utils.parse_wheel_filename(file["filename"])
+            try:
+                _, version, _, _ = packaging.utils.parse_wheel_filename(file["filename"])
+            except packaging.utils.InvalidWheelFilename:
+                continue
         elif file["filename"].endswith(("tar.gz", ".zip")):
             try:
                 _, version = packaging.utils.parse_sdist_filename(file["filename"])
