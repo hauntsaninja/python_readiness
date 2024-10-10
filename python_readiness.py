@@ -398,7 +398,7 @@ async def dist_support(
     # For the sake of example, assume a three part version component. If (x_0, y_0, z_0) is the
     # earliest supported version, we'll find it so long as:
     # - For all n>=0, there exists y', z' s.t. all (x_0+n, y>=y', z>=z') supports it
-    # - For all n>=0, there exists z' s.t. all (x_0, y_0', z>=z') supports it
+    # - For all n>=0, there exists z' s.t. all (x_0, y_0+n, z>=z') supports it
     left = 0
     right = len(all_versions)
     while left < right:
