@@ -1,5 +1,11 @@
 # Changelog
 
+## [v2.2]
+- Ignore invalid wheels instead of erroring
+- Better support for environments or requirements with prerelease package versions
+- Reduce padding in output
+- Add graphing code
+
 ## [v2.1]
 
 - Allow `--env` to resolve environment from a Python executable
