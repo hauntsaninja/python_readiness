@@ -68,25 +68,19 @@ few interesting tricks.
 `python_readiness` currently classifies package versions as one of the following levels of support:
 
 Explicitly supported:
-- `has_classifier_and_explicit_wheel`
-
+- `has_classifier_and_explicit_wheel`\
   Both `has_classifier` and `has_explicit_wheel` are true.
-- `has_classifier`
-
+- `has_classifier`\
   Has a trove classifier for the corresponding Python version.
-- `has_explicit_wheel`
-
+- `has_explicit_wheel`\
   Has a wheel that specifically supports the corresponding Python version (includes abi3 wheels targeting specifically that Python)
-- `is_requires_python_lower_bound`
-
+- `is_requires_python_lower_bound`\
   Niche, but if `Requires-Python: >=3.9` then the package explicitly supports 3.9.
 
 Potentially supported:
-- `has_viable_wheel`.
-
+- `has_viable_wheel`\
   Has a wheel that is installable on the Python version, but has no explicit indication that upstream has ever run it with that Python version.
-- `totally_unknown`
-
+- `totally_unknown`\
   This is usually because the package only provides an sdist.
 
 Unsupported:
