@@ -320,6 +320,7 @@ async def dist_support(
     python_version: tuple[int, int],
     monotonic_support: bool,
     exclude_newer: str | None,
+    allow_prerelease: bool = False,
 ) -> tuple[Version | None, PythonSupport, dict[str, Any] | None]:
     headers = {"Accept": "application/vnd.pypi.simple.v1+json"}
 
@@ -354,7 +355,9 @@ async def dist_support(
     all_versions = sorted((safe_version(v) for v in data["versions"]), reverse=True)
     # Note we check version_files[v] to filter out yanked releases or releases with newer than
     # exclude_newer files (otherwise these would be treated as "totally_unknown")
-    all_versions = [v for v in all_versions if not v.is_prerelease and version_files[v]]
+    if not allow_prerelease:
+        all_versions = [v for v in all_versions if not v.is_prerelease]
+    all_versions = [v for v in all_versions if version_files[v]]
     if not all_versions:
         return None, PythonSupport.totally_unknown, None
     latest_version = all_versions[0]
@@ -650,6 +653,9 @@ async def python_readiness(
                 python_version,
                 monotonic_support=monotonic_support,
                 exclude_newer=exclude_newer,
+                # We usually will want to exclude prereleases, but we include them if the
+                # requirement is suggestive of a prerelease
+                allow_prerelease=approx_min_satisfying_version(p).is_prerelease,
             )
         )
         for p in packages
