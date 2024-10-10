@@ -672,6 +672,10 @@ async def python_readiness(
             )
             printed = True
 
+    PAD = max(len(str(p)) for p in packages)
+    PAD = PAD + (-PAD % 10)
+    PAD = max(16, min(PAD, 40))
+
     out = []
     package_support = {p: await t for p, t in zip(packages, tasks)}
     for previous_req, (version, support, file_proof) in sorted(
@@ -687,7 +691,6 @@ async def python_readiness(
         else:
             new_req = Requirement(f"{package}>={version}")
 
-        PAD = 40
         previous_req_min = approx_min_satisfying_version(previous_req)
         if previous_req_min in new_req.specifier:
             if support > PythonSupport.EXPLICIT_INDICATION:
