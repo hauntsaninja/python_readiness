@@ -498,11 +498,11 @@ async def test_python_readiness_e2e() -> None:
     assert (
         readiness
         == """\
-aiohttp>=3.9.4                            # has_classifier_and_explicit_wheel
-black>=23.9.1                             # has_classifier_and_explicit_wheel
-mypy>=0.990                               # has_classifier_and_explicit_wheel
-typing-extensions>=4.5.0                  # has_classifier
-blobfile                                  # has_viable_wheel (cannot ensure support)"""
+aiohttp>=3.9.4                # has_classifier_and_explicit_wheel
+black>=23.9.1                 # has_classifier_and_explicit_wheel
+mypy>=0.990                   # has_classifier_and_explicit_wheel
+typing-extensions>=4.5.0      # has_classifier
+blobfile                      # has_viable_wheel (cannot ensure support)"""
     )
 
     readiness = await python_readiness(

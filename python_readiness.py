@@ -672,9 +672,9 @@ async def python_readiness(
             )
             printed = True
 
-    PAD = max(len(str(p)) for p in packages)
-    PAD = PAD + (-PAD % 10)
-    PAD = max(16, min(PAD, 40))
+    PAD = max(len(str(p)) for p in packages) + 8
+    PAD = PAD + (-PAD % 4)
+    PAD = min(PAD, 40)
 
     out = []
     package_support = {p: await t for p, t in zip(packages, tasks)}
