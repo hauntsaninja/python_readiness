@@ -282,6 +282,18 @@ async def test_dist_support() -> None:
         assert file_proof is not None
         assert file_proof["filename"] == "psygnal-0.6.0.post0-cp311-cp311-win_amd64.whl"
 
+        version, support, file_proof = await get_support("cryptography", (3, 9))
+        assert version == Version("42.0.0")
+        assert support == PythonSupport.has_classifier_and_explicit_wheel
+        assert file_proof is not None
+        assert file_proof["filename"] == "cryptography-42.0.0-cp39-abi3-win_amd64.whl"
+
+        version, support, file_proof = await get_support("cryptography", (3, 10))
+        assert version == Version("36.0.0")
+        assert support == PythonSupport.has_classifier
+        assert file_proof is not None
+        assert file_proof["filename"] == "cryptography-36.0.0-cp36-abi3-macosx_10_10_universal2.whl"
+
     await session.close()
 
 
