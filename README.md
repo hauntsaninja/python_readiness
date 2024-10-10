@@ -14,7 +14,7 @@ Alternatives include:
 
 ## Usage
 
-Check if a specific package is ready for a specific Python:
+**Check if a specific package is ready for a specific Python:**
 ```bash
 python_readiness -p numpy --python 3.11
 ```
@@ -31,7 +31,7 @@ numpy>=1.23.3     # has_classifier_and_explicit_wheel
 numpy>=2          # has_classifier_and_explicit_wheel (existing requirement ensures support)
 ```
 
-Check if a requirements file is ready for a specific Python:
+**Check if a requirements file is ready for a specific Python:**
 ```bash
 python_readiness -r requirements.txt --python 3.13
 ```
@@ -43,17 +43,17 @@ These are the minimum versions you will need to upgrade to for support.
 I find this really useful for updating constraints files when incrementally upgrading a large
 codebase to a new Python.
 
-Check if your current environment is ready for the latest Python:
+**Check if your current environment is ready for the latest Python:**
 ```bash
 python_readiness
 ```
 
-Check if another virtual environment is ready for the latest Python:
+**Check if another virtual environment is ready for the latest Python:**
 ```bash
 python_readiness -e path/to/.venv
 ```
 
-See all options:
+**See all options:**
 ```bash
 python_readiness --help
 ```
