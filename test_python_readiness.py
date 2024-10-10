@@ -513,6 +513,7 @@ blobfile                                  # has_viable_wheel (cannot ensure supp
             Requirement("typing-extensions>=4"),
             Requirement("blobfile>=0.1"),
             Requirement("ansiconv>=0.1"),
+            Requirement("opentelemetry-util-http>=0.47b0"),
         ],
         monotonic_support=False,
         exclude_newer=DEFAULT_EXCLUDE_NEWER,
@@ -528,6 +529,7 @@ blobfile                                  # has_viable_wheel (cannot ensure supp
 aiohttp>=3.9.4                            # has_classifier_and_explicit_wheel
 black>=23                                 # has_classifier_and_explicit_wheel (existing requirement ensures support)
 mypy>=1                                   # has_classifier_and_explicit_wheel (existing requirement ensures support)
+opentelemetry-util-http>=0.47b0           # has_classifier (existing requirement ensures support)
 typing-extensions>=4.5.0                  # has_classifier (previously: typing-extensions>=4)
 blobfile>=0.1                             # has_viable_wheel (cannot ensure support)
 ansiconv>=0.1                             # totally_unknown"""
