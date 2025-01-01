@@ -27,8 +27,10 @@ numpy>=2.1.0      # has_classifier_and_explicit_wheel
 numpy>=1.26.0     # has_classifier_and_explicit_wheel
 λ python_readiness -p numpy --python 3.11
 numpy>=1.23.3     # has_classifier_and_explicit_wheel
-λ python_readiness -p 'numpy>=2' --python 3.11
+λ python_readiness -p 'numpy>=2' --python 3.12
 numpy>=2          # has_classifier_and_explicit_wheel (existing requirement ensures support)
+λ python_readiness -p 'numpy==1.24' --python 3.12
+numpy>=1.26.0     # has_classifier_and_explicit_wheel (previously: numpy==1.24)
 ```
 
 **Check if a requirements file is ready for a specific Python:**
